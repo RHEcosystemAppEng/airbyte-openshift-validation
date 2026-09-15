@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Airbyte on OpenShift AI — Partner Validation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-deep: #0a0b0f;
+    --bg-surface: #12141a;
+    --bg-card: #181b24;
+    --bg-elevated: #1e2230;
+    --border: #2a2e3a;
+    --border-subtle: #1f2330;
+    --text-primary: #e8eaf0;
+    --text-secondary: #8b90a0;
+    --text-dim: #555968;
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.12);
+    --green-glow: rgba(34, 197, 94, 0.06);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.12);
+    --amber-glow: rgba(245, 158, 11, 0.04);
+    --gray: #6b7280;
+    --accent: #6366f1;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  html {
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* Subtle background texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 10%, rgba(99, 102, 241, 0.03), transparent),
+      radial-gradient(ellipse 60% 50% at 80% 90%, rgba(245, 158, 11, 0.02), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 40px 48px 80px;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .header-left h1 {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+
+  .header-left .subtitle {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+
+  .header-left .subtitle span {
+    color: var(--text-secondary);
+  }
+
+  .verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--amber-dim);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 6px;
+    padding: 12px 24px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .verdict-badge::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), transparent);
+    pointer-events: none;
+  }
+
+  .verdict-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse-amber 2.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-amber {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  }
+
+  /* ─── SECTION HEADERS ─── */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    padding-left: 2px;
+  }
+
+  .section {
+    margin-bottom: 48px;
+  }
+
+  /* ─── STATUS MATRIX ─── */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .status-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+  }
+
+  .status-card:hover {
+    border-color: var(--border);
+  }
+
+  .status-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+
+  .status-card.pass::before { background: var(--green); }
+  .status-card.fail::before { background: var(--red); }
+
+  .status-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .status-card .card-title {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .status-indicator {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 4px;
+  }
+
+  .status-indicator.pass {
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .status-indicator.fail {
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  .status-card .card-detail {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .status-card .card-detail strong {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  /* ─── ARCHITECTURE ─── */
+  .arch-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 36px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .arch-cluster {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 28px 24px 24px;
+    position: relative;
+  }
+
+  .arch-cluster-label {
+    position: absolute;
+    top: -9px;
+    left: 20px;
+    background: var(--bg-card);
+    padding: 0 10px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .arch-node {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    text-align: center;
+    min-width: 160px;
+    position: relative;
+  }
+
+  .arch-node.external {
+    border-style: dashed;
+    opacity: 0.7;
+  }
+
+  .arch-node .node-title {
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .arch-node .node-sub {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  .arch-node .node-badge {
+    display: inline-block;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--green-dim);
+    color: var(--green);
+  }
+
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    flex-shrink: 0;
+  }
+
+  .arch-arrow svg {
+    width: 48px;
+    height: 14px;
+  }
+
+  .arch-ns-group {
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 6px;
+    padding: 12px 14px 10px;
+    position: relative;
+    display: flex;
+    gap: 10px;
+    background: rgba(99, 102, 241, 0.03);
+  }
+
+  .arch-ns-label {
+    position: absolute;
+    top: -8px;
+    left: 12px;
+    background: var(--bg-card);
+    padding: 0 6px;
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+  }
+
+  /* ─── KEY FINDINGS ─── */
+  .findings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+
+  .finding-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 22px;
+    border-left: 3px solid transparent;
+  }
+
+  .finding-panel.positive { border-left-color: var(--green); }
+  .finding-panel.warning { border-left-color: var(--amber); }
+  .finding-panel.blocker { border-left-color: var(--red); }
+
+  .finding-panel h3 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .finding-panel.positive h3 { color: var(--green); }
+  .finding-panel.warning h3 { color: var(--amber); }
+  .finding-panel.blocker h3 { color: var(--red); }
+
+  .finding-list {
+    list-style: none;
+  }
+
+  .finding-list li {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    line-height: 1.45;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .finding-list li:last-child { border-bottom: none; }
+
+  .finding-list li::before {
+    content: '';
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    margin-top: 7px;
+  }
+
+  .finding-panel.positive .finding-list li::before { background: var(--green); opacity: 0.5; }
+  .finding-panel.warning .finding-list li::before { background: var(--amber); opacity: 0.5; }
+  .finding-panel.blocker .finding-list li::before { background: var(--red); opacity: 0.5; }
+
+  .finding-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-left: 4px;
+    flex-shrink: 0;
+  }
+
+  .finding-tag.workaround {
+    background: var(--amber-dim);
+    color: var(--amber);
+  }
+
+  .finding-tag.severity {
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  /* ─── CERTIFICATION ─── */
+  .cert-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .cert-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 22px;
+  }
+
+  .cert-panel h3 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .cert-panel .cert-summary {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+
+  .cert-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+  }
+
+  .cert-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 3px;
+  }
+
+  .cert-icon.pass { background: var(--green-dim); color: var(--green); }
+  .cert-icon.fail { background: var(--red-dim); color: var(--red); }
+  .cert-icon.skip { background: rgba(107, 114, 128, 0.15); color: var(--gray); }
+
+  /* ─── SYNC EVIDENCE ─── */
+  .sync-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+
+  .sync-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 22px;
+    text-align: center;
+  }
+
+  .sync-stat .stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .sync-stat .stat-value.green { color: var(--green); }
+
+  .sync-stat .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .sync-streams {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 12px;
+  }
+
+  .stream-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
+  .stream-count {
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+  }
+
+  /* ─── REMEDIATION ─── */
+  .remediation-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .remediation-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 20px 22px;
+  }
+
+  .remediation-panel h3 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .remediation-panel.upstream h3 { color: var(--red); }
+  .remediation-panel.deployer h3 { color: var(--accent); }
+
+  .remediation-list {
+    list-style: none;
+    counter-reset: item;
+  }
+
+  .remediation-list li {
+    counter-increment: item;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    line-height: 1.5;
+    display: flex;
+    gap: 10px;
+  }
+
+  .remediation-list li:last-child { border-bottom: none; }
+
+  .remediation-list li::before {
+    content: counter(item);
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    border-radius: 4px;
+    margin-top: 1px;
+  }
+
+  .remediation-panel.upstream .remediation-list li::before {
+    background: var(--red-dim);
+    color: var(--red);
+  }
+
+  .remediation-panel.deployer .remediation-list li::before {
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--accent);
+  }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-text {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    line-height: 1.6;
+  }
+
+  .footer-text span {
+    color: var(--text-secondary);
+  }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .section { animation: fadeSlideIn 0.4s ease-out both; }
+  .section:nth-child(1) { animation-delay: 0s; }
+  .section:nth-child(2) { animation-delay: 0.06s; }
+  .section:nth-child(3) { animation-delay: 0.12s; }
+  .section:nth-child(4) { animation-delay: 0.18s; }
+  .section:nth-child(5) { animation-delay: 0.24s; }
+  .section:nth-child(6) { animation-delay: 0.30s; }
+  .section:nth-child(7) { animation-delay: 0.36s; }
+  .section:nth-child(8) { animation-delay: 0.42s; }
+
+  .status-card {
+    animation: fadeSlideIn 0.35s ease-out both;
+  }
+  .status-card:nth-child(1) { animation-delay: 0.08s; }
+  .status-card:nth-child(2) { animation-delay: 0.12s; }
+  .status-card:nth-child(3) { animation-delay: 0.16s; }
+  .status-card:nth-child(4) { animation-delay: 0.20s; }
+  .status-card:nth-child(5) { animation-delay: 0.24s; }
+  .status-card:nth-child(6) { animation-delay: 0.28s; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <h1>Airbyte on OpenShift AI</h1>
+      <div class="subtitle">
+        Partner Validation &mdash;
+        <span>Airbyte 2.1.1</span> /
+        <span>OpenShift 4.21.16</span> /
+        <span>RHOAI 3.4.1</span>
+      </div>
+    </div>
+    <div class="verdict-badge">
+      <div class="verdict-dot"></div>
+      Conditional Pass
+    </div>
+  </header>
+
+  <!-- STATUS MATRIX -->
+  <div class="section">
+    <div class="section-label">Validation Status</div>
+    <div class="status-grid">
+      <div class="status-card pass">
+        <div class="card-header">
+          <div class="card-title">Deployment on OpenShift</div>
+          <div class="status-indicator pass">PASS</div>
+        </div>
+        <div class="card-detail">10 pods Running/Completed via Helm V2</div>
+      </div>
+      <div class="status-card pass">
+        <div class="card-header">
+          <div class="card-title">restricted-v2 SCC Compliance</div>
+          <div class="status-indicator pass">PASS</div>
+        </div>
+        <div class="card-detail">All pods run as <strong>UID 1000</strong>, non-root, drop ALL caps</div>
+      </div>
+      <div class="status-card pass">
+        <div class="card-header">
+          <div class="card-title">RHOAI Coexistence</div>
+          <div class="status-indicator pass">PASS</div>
+        </div>
+        <div class="card-detail"><strong>6/6</strong> checks passed &middot; 22 RHOAI pods healthy</div>
+      </div>
+      <div class="status-card pass">
+        <div class="card-header">
+          <div class="card-title">E2E Data Ingestion</div>
+          <div class="status-indicator pass">PASS</div>
+        </div>
+        <div class="card-detail"><strong>72 rows</strong> &middot; 13,592 bytes &middot; 3m 13s</div>
+      </div>
+      <div class="status-card fail">
+        <div class="card-header">
+          <div class="card-title">Preflight (Container Image)</div>
+          <div class="status-indicator fail">FAIL</div>
+        </div>
+        <div class="card-detail"><strong>7/10</strong> checks passed &middot; Pre-certification gaps</div>
+      </div>
+      <div class="status-card fail">
+        <div class="card-header">
+          <div class="card-title">Chart-Verifier (Helm Chart)</div>
+          <div class="status-indicator fail">FAIL</div>
+        </div>
+        <div class="card-detail"><strong>8/14</strong> checks passed &middot; Pre-certification gaps</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <div class="section">
+    <div class="section-label">Architecture</div>
+    <div class="arch-container">
+      <div class="arch-cluster">
+        <div class="arch-cluster-label">OpenShift 4.21 Cluster &mdash; ai-dev02</div>
+        <div class="arch-flow">
+
+          <div class="arch-node external">
+            <div class="node-title">External Sources</div>
+            <div class="node-sub">Databases, APIs,<br>SaaS, Files</div>
+          </div>
+
+          <div class="arch-arrow">
+            <svg viewBox="0 0 48 14"><line x1="0" y1="7" x2="40" y2="7" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 3"/><polygon points="40,3 48,7 40,11" fill="currentColor"/></svg>
+          </div>
+
+          <div class="arch-ns-group">
+            <div class="arch-ns-label">ns: airbyte-validation</div>
+            <div class="arch-node">
+              <div class="node-title">Airbyte</div>
+              <div class="node-sub">Server, Worker,<br>Launcher, Temporal</div>
+              <div class="node-badge">restricted-v2</div>
+            </div>
+          </div>
+
+          <div class="arch-arrow">
+            <svg viewBox="0 0 48 14"><line x1="0" y1="7" x2="40" y2="7" stroke="currentColor" stroke-width="1.2"/><polygon points="40,3 48,7 40,11" fill="currentColor"/></svg>
+          </div>
+
+          <div class="arch-node">
+            <div class="node-title">PostgreSQL</div>
+            <div class="node-sub">Shared data layer<br>Source + Destination</div>
+          </div>
+
+          <div class="arch-arrow">
+            <svg viewBox="0 0 48 14"><line x1="0" y1="7" x2="40" y2="7" stroke="currentColor" stroke-width="1.2"/><polygon points="40,3 48,7 40,11" fill="currentColor"/></svg>
+          </div>
+
+          <div class="arch-ns-group">
+            <div class="arch-ns-label">ns: redhat-ods-applications</div>
+            <div class="arch-node">
+              <div class="node-title">RHOAI</div>
+              <div class="node-sub">Workbenches, Pipelines,<br>KServe, Ray</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KEY FINDINGS -->
+  <div class="section">
+    <div class="section-label">Key Findings</div>
+    <div class="findings-grid">
+
+      <div class="finding-panel positive">
+        <h3>What Works</h3>
+        <ul class="finding-list">
+          <li>All platform pods run under restricted-v2 SCC &mdash; no custom SCCs needed</li>
+          <li>Airbyte runs as UID 1000 &mdash; compatible with OpenShift namespace UID constraints</li>
+          <li>Zero impact on RHOAI components &mdash; complete isolation confirmed</li>
+          <li>Low resource footprint: ~205m CPU / ~2.2 GiB for platform pods</li>
+          <li>Helm chart passes lint, has tests, README, and NOTES.txt</li>
+          <li>RunAsNonRoot preflight check passes</li>
+        </ul>
+      </div>
+
+      <div class="finding-panel warning">
+        <h3>Known Issues</h3>
+        <ul class="finding-list">
+          <li>Namespace requires two-step creation for MCS annotation <span class="finding-tag workaround">DOCUMENTED</span></li>
+          <li>Airbyte V2 uses /api/public/v1/ &mdash; internal /api/v1/ returns 404 <span class="finding-tag workaround">DOCUMENTED</span></li>
+          <li>temporalUi requires root &mdash; must stay disabled on restricted-v2 <span class="finding-tag workaround">DISABLED</span></li>
+          <li>Container images not based on UBI, missing required labels and /licenses</li>
+          <li>Helm chart missing values.schema.json, kubeVersion, and OpenShift annotations</li>
+        </ul>
+      </div>
+
+      <div class="finding-panel blocker">
+        <h3>Blockers</h3>
+        <ul class="finding-list">
+          <li>
+            <div>
+              <strong style="color: var(--text-primary);">Replication pod hardcoded resources</strong>
+              <span class="finding-tag severity">HIGH</span>
+              <br>
+              Orchestrator ignores REPLICATION_ORCHESTRATOR_CPU_REQUEST env var overrides.
+              Hardcodes 2 CPU / 2Gi per container (4 CPU total).
+              Pods fail to schedule on resource-constrained clusters.
+              <br><br>
+              <span style="color: var(--amber); font-size: 0.72rem;">Workaround: manual pod resource patch via jq</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CERTIFICATION GAPS -->
+  <div class="section">
+    <div class="section-label">Certification Status</div>
+    <div class="cert-grid">
+
+      <div class="cert-panel">
+        <h3>Preflight (Container Image)</h3>
+        <div class="cert-summary">openshift-preflight 1.21.0 &mdash; airbyte/server:2.1.1</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> HasUniqueTag</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> LayerCountAcceptable</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> HasNoProhibitedPackages</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> HasNoProhibitedLabels</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> RunAsNonRoot</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> HasModifiedFiles</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> HasProhibitedContainerName</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> HasLicense &mdash; no /licenses directory</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> HasRequiredLabel &mdash; missing 7 OCI labels</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> BasedOnUbi &mdash; not built on UBI/RHHI</div>
+      </div>
+
+      <div class="cert-panel">
+        <h3>Chart-Verifier (Helm Chart)</h3>
+        <div class="cert-summary">chart-verifier 1.16.0 &mdash; partner v1.3 profile</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> contains-test</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> has-notes</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> not-contains-crds</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> has-readme</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> helm-lint</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> contains-values</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> is-helm-v3</div>
+        <div class="cert-check"><div class="cert-icon pass">+</div> not-contain-csi-objects</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> contains-values-schema</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> has-kubeversion</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> images-are-certified &mdash; 0/11 certified</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> chart-testing &mdash; no live cluster in container</div>
+        <div class="cert-check"><div class="cert-icon fail">x</div> required-annotations-present</div>
+        <div class="cert-check"><div class="cert-icon skip">-</div> signature-is-valid &mdash; unsigned</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SYNC EVIDENCE -->
+  <div class="section">
+    <div class="section-label">Sync Evidence</div>
+    <div class="sync-grid">
+      <div class="sync-stat">
+        <div class="stat-value green">72</div>
+        <div class="stat-label">Rows Synced</div>
+      </div>
+      <div class="sync-stat">
+        <div class="stat-value">13,592</div>
+        <div class="stat-label">Bytes Transferred</div>
+      </div>
+      <div class="sync-stat">
+        <div class="stat-value">3</div>
+        <div class="stat-label">Streams</div>
+      </div>
+      <div class="sync-stat">
+        <div class="stat-value">3:13</div>
+        <div class="stat-label">Duration</div>
+      </div>
+      <div class="sync-stat">
+        <div class="stat-value">#6</div>
+        <div class="stat-label">Job ID</div>
+      </div>
+    </div>
+    <div class="sync-streams">
+      <div class="stream-item">customers <span class="stream-count">10</span></div>
+      <div class="stream-item">documents <span class="stream-count">17</span></div>
+      <div class="stream-item">metadata <span class="stream-count">45</span></div>
+    </div>
+  </div>
+
+  <!-- REMEDIATION ROADMAP -->
+  <div class="section">
+    <div class="section-label">Remediation Roadmap</div>
+    <div class="remediation-grid">
+
+      <div class="remediation-panel upstream">
+        <h3>Airbyte Upstream</h3>
+        <ol class="remediation-list">
+          <li>Fix replication orchestrator to honor resource env var overrides (REPLICATION_ORCHESTRATOR_CPU_REQUEST et al.)</li>
+          <li>Rebase container images on UBI9 (registry.access.redhat.com/ubi9)</li>
+          <li>Add /licenses directory with Apache 2.0 license to all images</li>
+          <li>Add required OCI labels: name, vendor, version, release, summary, description, maintainer</li>
+          <li>Add values.schema.json to Helm chart</li>
+          <li>Set kubeVersion constraint in Chart.yaml</li>
+          <li>Add charts.openshift.io/name annotation</li>
+          <li>Submit images to Red Hat Connect for certification</li>
+        </ol>
+      </div>
+
+      <div class="remediation-panel deployer">
+        <h3>Deployer Configuration</h3>
+        <ol class="remediation-list">
+          <li>Use two-step namespace creation: oc new-project then annotate UID/GID 1000</li>
+          <li>Use Public API v1 (/api/public/v1/) &mdash; internal /api/v1/ returns 404 in V2</li>
+          <li>Keep temporalUi disabled (requires root, incompatible with restricted-v2)</li>
+          <li>For production: use external PostgreSQL and S3-compatible storage instead of bundled MinIO</li>
+          <li>Enable auth in production (global.auth.enabled: true)</li>
+          <li>Monitor replication pods for scheduling failures; apply resource patch workaround as needed</li>
+        </ol>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-text">
+      Validated on <span>ai-dev02.kni.syseng.devcluster.openshift.com</span><br>
+      Partner: <span>Airbyte</span> &middot; Program: <span>Red Hat Data Partner Strategy</span>
+    </div>
+    <div class="footer-text" style="text-align: right;">
+      Validation Date: <span>2026-08-27</span><br>
+      Report Generated: <span>2026-09-15</span>
+    </div>
+  </footer>
+
+</div>
+
+</body>
+</html>

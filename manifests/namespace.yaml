@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: airbyte-validation
+  labels:
+    app.kubernetes.io/part-of: airbyte-validation
+    purpose: partner-validation
+---
+# Apply UID/GID annotations AFTER namespace creation so that OpenShift
+# auto-populates the MCS annotation first. Use the deploy script or run:
+#
+#   oc new-project airbyte-validation
+#   oc annotate namespace airbyte-validation \
+#     openshift.io/sa.scc.uid-range="1000/1" \
+#     openshift.io/sa.scc.supplemental-groups="1000/1" \
+#     --overwrite
+#   oc label namespace airbyte-validation \
+#     app.kubernetes.io/part-of=airbyte-validation \
+#     purpose=partner-validation

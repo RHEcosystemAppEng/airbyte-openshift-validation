@@ -1,0 +1,520 @@
+# =============================================================================
+# Airbyte Helm V2 - OpenShift 4.21 Values Overlay
+# =============================================================================
+# Chart: airbyte-v2/airbyte version 2.1.1
+# Repo:  helm repo add airbyte-v2 https://airbytehq.github.io/charts
+#
+# Purpose: Configure Airbyte for OpenShift with restricted-v2 SCC compliance.
+# Usage:   helm install airbyte airbyte-v2/airbyte \
+#            --namespace airbyte --create-namespace \
+#            --values openshift-values.yaml \
+#            --version 2.1.1
+#
+# OpenShift restricted-v2 SCC requirements:
+#   - runAsNonRoot: true
+#   - allowPrivilegeEscalation: false
+#   - Drop ALL capabilities
+#   - seccompProfile: RuntimeDefault
+#   - No privileged containers
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Configuration
+# -----------------------------------------------------------------------------
+global:
+  # Airbyte community (OSS) edition
+  edition: community
+
+  # The external URL where Airbyte will be accessed.
+  # Set this to the hostname of your OpenShift Route.
+  airbyteUrl: ""
+
+  # Disable auth for validation environment (enable in production)
+  auth:
+    enabled: false
+
+  image:
+    # Override registry if using an internal OpenShift registry or mirror
+    registry: ""
+    # Pin to the chart's app version by default; override if needed
+    tag: ""
+
+  # -- Structured JSON logging for OpenShift log aggregation (e.g. EFK/Loki)
+  logging:
+    level: info
+    # Enable HTTP access logs for debugging ingress/route issues
+    httpAccessLogsEnabled: true
+    # Custom log4j config file path; leave empty to use defaults.
+    # To force JSON structured output, mount a custom log4j2 config
+    # that uses JsonLayout and set this path accordingly.
+    log4jConfigFile: ""
+
+  # -- Environment variables applied to all Airbyte pods
+  # NOTE: Do NOT set resource env vars (JOB_MAIN_CONTAINER_CPU_*, etc.) here —
+  # the chart maps those via ConfigMap. Use global.workloads.resources instead.
+  env_vars:
+    DEPLOYMENT_MODE: "OSS"
+    LOG_FORMAT: "json"
+
+  # Disable tracking/telemetry for air-gapped or validation environments
+  tracking:
+    enabled: false
+    strategy: logging
+
+  # -- Internal Minio storage (default for community edition)
+  storage:
+    type: minio
+    minio:
+      accessKeyId: minio
+      secretAccessKey: minio123
+
+  # -- Workload configuration for connector jobs
+  workloads:
+    resources:
+      # Disable connector resource defaults (they request 1-2 CPU each, exhausting scheduler capacity)
+      useConnectorResourceDefaults: false
+      mainContainer:
+        cpu:
+          request: "250m"
+          limit: "500m"
+        memory:
+          request: "256Mi"
+          limit: "512Mi"
+      replication:
+        cpu:
+          request: "250m"
+          limit: "500m"
+        memory:
+          request: "256Mi"
+          limit: "512Mi"
+      check:
+        cpu:
+          request: "100m"
+          limit: "250m"
+        memory:
+          request: "128Mi"
+          limit: "256Mi"
+      discover:
+        cpu:
+          request: "100m"
+          limit: "250m"
+        memory:
+          request: "128Mi"
+          limit: "256Mi"
+      sidecar:
+        cpu:
+          request: "100m"
+          limit: "250m"
+        memory:
+          request: "128Mi"
+          limit: "256Mi"
+
+  # -- Java opts applied globally to JVM-based services
+  java:
+    opts:
+      - "-XX:+UseContainerSupport"
+      - "-XX:MaxRAMPercentage=75.0"
+
+  # -- Disable topology node selectors for validation (single-pool cluster)
+  topology:
+    nodeSelectorLabel: ""
+    nodeSelectors:
+      mainNodePool: ""
+      jobsNodePool: ""
+      quickJobsNodePool: ""
+
+  # -- Jobs configuration
+  jobs:
+    kube:
+      # OpenShift-specific annotations for job pods
+      annotations:
+        openshift.io/scc: restricted-v2
+      labels:
+        app.kubernetes.io/part-of: airbyte
+        app.kubernetes.io/managed-by: helm
+
+# -----------------------------------------------------------------------------
+# Ingress - Disabled (use OpenShift Routes instead)
+# -----------------------------------------------------------------------------
+# OpenShift Routes provide TLS termination and are the standard ingress
+# mechanism. Create a Route resource separately targeting the server service.
+ingress:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Webapp
+# -----------------------------------------------------------------------------
+webapp:
+  # webapp is disabled by default in V2; the server serves the UI
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Server (API + UI)
+# -----------------------------------------------------------------------------
+server:
+  enabled: true
+  replicaCount: 1
+
+  # -- OpenShift labels for the server pods
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: server
+
+  # -- Pod-level security context (OpenShift restricted-v2 compliant)
+  podSecurityContext:
+    fsGroup: 1000
+    # OpenShift restricted-v2: ensure volume mounts are accessible
+    fsGroupChangePolicy: OnRootMismatch
+
+  # -- Container-level security context (OpenShift restricted-v2 compliant)
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  # -- Validation-environment resource sizing
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Worker
+# -----------------------------------------------------------------------------
+worker:
+  enabled: true
+  replicaCount: 1
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: worker
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+  env_vars:
+    CONTAINER_ORCHESTRATOR_ENABLED: true
+
+# -----------------------------------------------------------------------------
+# Workload Launcher
+# -----------------------------------------------------------------------------
+workloadLauncher:
+  enabled: true
+  replicaCount: 1
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: workload-launcher
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Workload API Server
+# -----------------------------------------------------------------------------
+workloadApiServer:
+  enabled: true
+  replicaCount: 1
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Temporal (workflow engine)
+# -----------------------------------------------------------------------------
+temporal:
+  enabled: true
+  replicaCount: 1
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: temporal
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# -----------------------------------------------------------------------------
+# Temporal UI - Disabled for validation
+# -----------------------------------------------------------------------------
+temporalUi:
+  enabled: false
+  # NOTE: The upstream default runs temporalUi as root (runAsUser: 0).
+  # If you enable this on OpenShift, you must override the security context
+  # or grant a less-restrictive SCC. It is disabled here to stay within
+  # restricted-v2 compliance.
+
+# -----------------------------------------------------------------------------
+# Cron
+# -----------------------------------------------------------------------------
+cron:
+  enabled: true
+  replicaCount: 1
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: cron
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Bootloader (database migration job)
+# -----------------------------------------------------------------------------
+airbyteBootloader:
+  enabled: true
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: bootloader
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Manifest Server (replaces connector-builder-server in V2)
+# -----------------------------------------------------------------------------
+manifestServer:
+  enabled: true
+  replicaCount: 1
+
+  podLabels:
+    app.kubernetes.io/part-of: airbyte
+    app.kubernetes.io/component: manifest-server
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Metrics Reporter - Disabled for validation
+# -----------------------------------------------------------------------------
+metrics:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Connector Rollout Worker - Disabled for validation
+# -----------------------------------------------------------------------------
+connectorRolloutWorker:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Feature Flag Server - Disabled for validation
+# -----------------------------------------------------------------------------
+featureflagServer:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Keycloak (SSO) - Disabled for OSS community edition
+# -----------------------------------------------------------------------------
+keycloak:
+  enabled: false
+
+keycloakSetup:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# PostgreSQL (bundled internal database)
+# -----------------------------------------------------------------------------
+# Airbyte v1.3+ runs all components (including bundled PostgreSQL) as UID 1000
+# to match the namespace annotation openshift.io/sa.scc.uid-range: 1000/1.
+# For production, use an external database (global.database.type: external).
+postgresql:
+  enabled: true
+
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  storage:
+    volumeClaimValue: 2Gi
+
+# -----------------------------------------------------------------------------
+# MinIO (bundled object storage)
+# -----------------------------------------------------------------------------
+# MinIO is used as the default object storage backend.
+# For production on OpenShift, consider using OpenShift Data Foundation (ODF)
+# or an external S3-compatible store.
+minio:
+  enabled: true
+
+  storage:
+    volumeClaimValue: 2Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
+# Stigg Sidecar - Disabled (enterprise only)
+# -----------------------------------------------------------------------------
+stiggSidecar:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Service Account
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true

@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: airbyte-server
+  namespace: airbyte-validation
+  labels:
+    app.kubernetes.io/part-of: airbyte-validation
+spec:
+  to:
+    kind: Service
+    name: airbyte-airbyte-server-svc
+    weight: 100
+  port:
+    targetPort: 8001
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

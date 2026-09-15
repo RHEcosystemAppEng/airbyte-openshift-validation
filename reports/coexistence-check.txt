@@ -1,0 +1,73 @@
+================================================================================
+ Airbyte / RHOAI Coexistence Verification Report
+ Cluster: ai-dev02 (OCP 4.21.16)
+ Date: 2026-08-27
+================================================================================
+
+1. RHOAI Pod Health                                                    [PASS]
+   All 22 pods in redhat-ods-applications are in Running state.
+   No pods in CrashLoopBackOff, Error, or Pending states.
+
+2. DataScienceCluster Component Status                                 [PASS]
+   aipipelines:        Managed
+   dashboard:          Managed
+   feastoperator:      Managed
+   kserve:             Managed
+   kueue:              Unmanaged (pre-existing, not related to Airbyte)
+   llamastackoperator: Managed
+   mlflowoperator:     Managed
+   modelregistry:      Managed
+   ray:                Managed
+   sparkoperator:      Removed (pre-existing, not related to Airbyte)
+   trainer:            Managed
+   trainingoperator:   Managed
+   trustyai:           Managed
+   workbenches:        Managed
+
+   Note: kueue=Unmanaged and sparkoperator=Removed were in this state
+   before Airbyte deployment. No component status changed.
+
+3. Warning Events in redhat-ods-applications                           [PASS]
+   Pre-existing warnings only (maas-api-key-cleanup CronJob failures and
+   maas-controller restarts). These are unrelated to the Airbyte deployment
+   and were occurring before Airbyte was installed.
+
+4. Airbyte Pod Health                                                  [PASS]
+   9 pods Running, 1 Completed (bootloader - expected).
+   1 pod ContainerCreating (postgresql test datasource, just deployed).
+   No CrashLoopBackOff or Error states.
+
+   Pods:
+   - airbyte-cron              Running
+   - airbyte-db-0              Running
+   - airbyte-manifest-server   Running
+   - airbyte-minio-0           Running
+   - airbyte-server            Running
+   - airbyte-temporal          Running
+   - airbyte-worker            Running
+   - airbyte-workload-api-server   Running
+   - airbyte-workload-launcher     Running
+   - airbyte-bootloader        Completed (expected)
+
+5. Resource Audit                                                      [PASS]
+   Cluster: 22 nodes, max utilization 56% CPU / 69% memory.
+   Airbyte total resource usage:
+     CPU:    ~205m
+     Memory: ~2213Mi (~2.2 GiB)
+   RHOAI total resource usage:
+     CPU:    ~55m
+     Memory: ~4535Mi (~4.4 GiB)
+   No resource contention detected.
+
+6. CRD Conflict Check                                                  [PASS]
+   No Airbyte or Temporal CRDs installed.
+   Airbyte uses standard Kubernetes resources (Deployments, Services,
+   StatefulSets) and does not install custom CRDs. Zero conflict risk
+   with RHOAI CRDs.
+
+================================================================================
+ SUMMARY: ALL CHECKS PASSED (6/6)
+
+ Airbyte deploys alongside RHOAI without any conflicts, resource
+ contention, or degradation of RHOAI services.
+================================================================================

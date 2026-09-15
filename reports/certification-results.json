@@ -1,0 +1,48 @@
+{
+  "preflight": {
+    "tool": "openshift-preflight 1.21.0",
+    "image": "docker.io/airbyte/server:2.1.1",
+    "overall": "FAILED",
+    "passed": [
+      "HasUniqueTag",
+      "LayerCountAcceptable",
+      "HasNoProhibitedPackages",
+      "HasNoProhibitedLabels",
+      "RunAsNonRoot",
+      "HasModifiedFiles",
+      "HasProhibitedContainerName"
+    ],
+    "failed": [
+      {"check": "HasLicense", "reason": "No /licenses directory in image", "remediation": "Add /licenses directory with licensing files"},
+      {"check": "HasRequiredLabel", "reason": "Missing labels: name, vendor, version, release, summary, description, maintainer", "remediation": "Add required OCI labels to Dockerfile"},
+      {"check": "BasedOnUbi", "reason": "Image not based on Red Hat UBI", "remediation": "Rebase on UBI9 (registry.access.redhat.com/ubi9)"}
+    ],
+    "notes": "RunAsNonRoot PASSED — image runs as airbyte:airbyte (non-root). Key for OpenShift restricted-v2 SCC compliance."
+  },
+  "chart_verifier": {
+    "tool": "chart-verifier 1.16.0",
+    "chart": "airbyte-2.1.1.tgz",
+    "profile": "partner v1.3",
+    "overall": "FAILED",
+    "passed": [
+      "v1.0/contains-test",
+      "v1.0/has-notes",
+      "v1.0/not-contains-crds",
+      "v1.0/has-readme",
+      "v1.0/helm-lint",
+      "v1.0/contains-values",
+      "v1.0/is-helm-v3",
+      "v1.0/not-contain-csi-objects"
+    ],
+    "failed": [
+      {"check": "v1.0/contains-values-schema", "reason": "No values.schema.json file"},
+      {"check": "v1.1/has-kubeversion", "reason": "kubeVersion not specified in Chart.yaml"},
+      {"check": "v1.1/images-are-certified", "reason": "None of the 11 images are Red Hat certified"},
+      {"check": "v1.0/chart-testing", "reason": "Requires live cluster access (ran in container without kubeconfig)"},
+      {"check": "v1.0/required-annotations-present", "reason": "Missing charts.openshift.io/name annotation"}
+    ],
+    "skipped": [
+      {"check": "v1.0/signature-is-valid", "reason": "Chart is not signed"}
+    ]
+  }
+}

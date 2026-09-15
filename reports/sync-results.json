@@ -1,0 +1,30 @@
+{
+  "jobId": 6,
+  "status": "succeeded",
+  "jobType": "sync",
+  "startTime": "2026-08-27T21:34:59Z",
+  "lastUpdatedAt": "2026-08-27T21:38:12Z",
+  "duration": "PT3M13S",
+  "bytesSynced": 13592,
+  "rowsSynced": 72,
+  "connectionId": "fee1f28a-77bf-4c15-8a25-cf37263dc318",
+  "sourceId": "5a4ab713-8ff7-48eb-ada5-5ef8f1d8d239",
+  "destinationId": "5243398e-9ab0-4004-84f4-5b8f978b1c9b",
+  "cluster": "ai-dev02.kni.syseng.devcluster.openshift.com",
+  "namespace": "airbyte-validation",
+  "streams": {
+    "customers": {"rows": 10, "verified": true},
+    "documents": {"rows": 17, "verified": true},
+    "metadata": {"rows": 45, "verified": true}
+  },
+  "workaround_applied": "Manual pod resource override required — Airbyte replication orchestrator ignores global.workloads.resources Helm values and hardcodes 2 CPU / 2Gi per container. Pod was recreated with 250m CPU / 512Mi memory to fit cluster capacity.",
+  "bug_report": {
+    "component": "replication-orchestrator",
+    "issue": "Container resource requests hardcoded at 2 CPU / 2Gi memory despite global.workloads.resources.useConnectorResourceDefaults=false and explicit resource overrides in Helm values",
+    "impact": "Replication pods fail to schedule on resource-constrained clusters (typical OpenShift environments)",
+    "severity": "high",
+    "env_vars_populated": true,
+    "env_vars_ignored": true,
+    "affected_containers": ["init", "orchestrator", "source", "destination"]
+  }
+}
