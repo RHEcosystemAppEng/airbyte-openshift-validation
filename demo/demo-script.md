@@ -89,7 +89,7 @@ oc exec deploy/postgresql -n airbyte-validation -- \
 # Show a sample document that would feed into a RAG pipeline
 oc exec deploy/postgresql -n airbyte-validation -- \
   psql -U airbyte_test -d sample_data -c \
-  "SELECT id, title, doc_type, length(content) as content_length FROM airbyte_output.documents LIMIT 5;"
+  "SELECT id, title, source, length(content) as content_length FROM airbyte_output.documents LIMIT 5;"
 ```
 
 **Talking points:**
