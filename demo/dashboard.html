@@ -1023,6 +1023,66 @@
     </div>
   </div>
 
+  <!-- RHOAI INTEGRATION -->
+  <div class="pf-section">
+    <div class="pf-section__title">RHOAI Integration Pattern</div>
+    <div class="pf-card">
+      <div class="pf-card__body" style="padding: 28px 28px 24px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+
+          <div>
+            <h3 style="font-family: var(--pf-font-display); font-size: 0.88rem; font-weight: 700; color: var(--pf-text-100); margin-bottom: 16px;">RAG Pipeline Example</h3>
+            <p style="font-family: var(--pf-font-text); font-size: 0.82rem; color: var(--pf-text-300); line-height: 1.6; margin-bottom: 16px;">
+              A reference notebook demonstrates how an RHOAI Workbench connects to
+              Airbyte-synced data and builds a retrieval-augmented generation pipeline.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 50%; background: var(--pf-success-bg); border: 1px solid rgba(62,134,53,0.3); display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: var(--pf-success-light); flex-shrink: 0;">1</div>
+                <span style="font-family: var(--pf-font-text); font-size: 0.78rem; color: var(--pf-text-300);">Connect to PostgreSQL via in-cluster service</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 50%; background: var(--pf-success-bg); border: 1px solid rgba(62,134,53,0.3); display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: var(--pf-success-light); flex-shrink: 0;">2</div>
+                <span style="font-family: var(--pf-font-text); font-size: 0.78rem; color: var(--pf-text-300);">Load documents from <span style="font-family: var(--pf-font-mono); font-size: 0.72rem; color: var(--pf-text-200);">airbyte_output.documents</span></span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 50%; background: var(--pf-success-bg); border: 1px solid rgba(62,134,53,0.3); display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: var(--pf-success-light); flex-shrink: 0;">3</div>
+                <span style="font-family: var(--pf-font-text); font-size: 0.78rem; color: var(--pf-text-300);">Chunk and embed with sentence-transformers</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 50%; background: var(--pf-success-bg); border: 1px solid rgba(62,134,53,0.3); display: flex; align-items: center; justify-content: center; font-size: 0.62rem; color: var(--pf-success-light); flex-shrink: 0;">4</div>
+                <span style="font-family: var(--pf-font-text); font-size: 0.78rem; color: var(--pf-text-300);">Run similarity search over embedded content</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="font-family: var(--pf-font-display); font-size: 0.88rem; font-weight: 700; color: var(--pf-text-100); margin-bottom: 16px;">Integration Points</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="background: var(--pf-bg-400); border: 1px solid var(--pf-border-subtle); border-radius: var(--pf-radius); padding: 14px 16px;">
+                <div style="font-family: var(--pf-font-display); font-size: 0.78rem; font-weight: 600; color: var(--pf-info); margin-bottom: 4px;">Airbyte</div>
+                <div style="font-family: var(--pf-font-text); font-size: 0.75rem; color: var(--pf-text-400);">Data ingestion layer &mdash; extract from any of 400+ connectors, load into PostgreSQL</div>
+              </div>
+              <div style="background: var(--pf-bg-400); border: 1px solid var(--pf-border-subtle); border-radius: var(--pf-radius); padding: 14px 16px;">
+                <div style="font-family: var(--pf-font-display); font-size: 0.78rem; font-weight: 600; color: var(--pf-success-light); margin-bottom: 4px;">PostgreSQL</div>
+                <div style="font-family: var(--pf-font-text); font-size: 0.75rem; color: var(--pf-text-400);">Shared data layer &mdash; both Airbyte and RHOAI access via in-cluster services</div>
+              </div>
+              <div style="background: var(--pf-bg-400); border: 1px solid var(--pf-border-subtle); border-radius: var(--pf-radius); padding: 14px 16px;">
+                <div style="font-family: var(--pf-font-display); font-size: 0.78rem; font-weight: 600; color: var(--pf-warning-light); margin-bottom: 4px;">RHOAI Workbenches</div>
+                <div style="font-family: var(--pf-font-text); font-size: 0.75rem; color: var(--pf-text-400);">AI workload layer &mdash; transform, embed, serve models from ingested data</div>
+              </div>
+            </div>
+            <div style="margin-top: 12px; font-family: var(--pf-font-text); font-size: 0.72rem; color: var(--pf-text-500); line-height: 1.5;">
+              This pattern works with any Airbyte connector &mdash; Salesforce, Snowflake, S3, APIs, etc.
+              The notebook is at <span style="font-family: var(--pf-font-mono); font-size: 0.68rem; color: var(--pf-text-400);">examples/rag-pipeline/notebook.py</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- REMEDIATION ROADMAP -->
   <div class="pf-section">
     <div class="pf-section__title">Remediation Roadmap</div>
