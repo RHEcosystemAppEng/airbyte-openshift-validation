@@ -284,7 +284,7 @@ create_destination() {
   local existing
   existing=$(api_get "/destinations?workspaceIds=${WORKSPACE_ID}")
   DESTINATION_ID=$(echo "${existing}" | jq -r \
-    '.data[] | select(.name == "OpenShift Validation - Sink") | .destinationId' \
+    '.data[] | select(.name == "OpenShift Validation - PG Destination") | .destinationId' \
     | head -n1)
 
   if [[ -n "${DESTINATION_ID}" && "${DESTINATION_ID}" != "null" ]]; then
@@ -298,7 +298,7 @@ create_destination() {
   result=$(api_post "/destinations" "{
     \"definitionId\": \"${POSTGRES_DEST_DEF_ID}\",
     \"workspaceId\": \"${WORKSPACE_ID}\",
-    \"name\": \"OpenShift Validation - Sink\",
+    \"name\": \"OpenShift Validation - PG Destination\",
     \"configuration\": {
       \"host\": \"${PG_HOST}\",
       \"port\": ${PG_PORT},

@@ -99,7 +99,7 @@ Show the evidence:
 
 ```bash
 # The Helm values set 250m CPU
-grep -A3 'replication:' ../helm/openshift-values.yaml | head -6
+grep -A3 'replication:' helm/openshift-values.yaml | head -6
 
 # The ConfigMap correctly has 250m
 oc get configmap airbyte-airbyte-env -n airbyte-validation -o json | \
@@ -112,7 +112,7 @@ oc get configmap airbyte-airbyte-env -n airbyte-validation -o json | \
 
 ## 7. Integration with RHOAI (2 min)
 
-Scroll to the Architecture section on the dashboard.
+Scroll to the RHOAI Integration Pattern section on the dashboard.
 
 **Talking point:** "The integration pattern is straightforward: Airbyte ingests data from external sources into a shared PostgreSQL instance. RHOAI workbenches connect to that same database and can immediately use the data for model training, RAG pipelines, or analytics. We built an example notebook that reads the Airbyte-synced documents, generates embeddings with sentence-transformers, and runs similarity search — a complete RAG pipeline."
 

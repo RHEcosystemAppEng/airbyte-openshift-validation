@@ -780,7 +780,7 @@ Helm deploy command:
 ```bash
 helm upgrade --install airbyte airbyte-v2/airbyte \
   --namespace airbyte-validation \
-  --values openshift-values.yaml \
+  --values helm/openshift-values.yaml \
   --version 2.1.1 \
   --wait \
   --atomic

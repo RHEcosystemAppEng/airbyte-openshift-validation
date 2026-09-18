@@ -100,7 +100,7 @@ All Airbyte pods comply with OpenShift `restricted-v2` SCC:
 | CRD Conflict Check | PASS — Airbyte uses no CRDs |
 
 RHOAI components verified healthy alongside Airbyte:
-- AI Pipelines, Dashboard, KServe, Ray, Feast, Llama Stack, MLflow, Model Registry, TrustyAI, Workbenches, Trainer
+- AI Pipelines, Dashboard, KServe, Ray, Feast, Llama Stack, MLflow, Model Registry, TrustyAI, Workbenches, Trainer, Training Operator
 
 ---
 
@@ -138,7 +138,7 @@ The Airbyte replication orchestrator hardcodes container resource requests at **
 - `global.workloads.resources.replication.cpu.request: "250m"` is set
 - ConfigMap `airbyte-airbyte-env` correctly contains `REPLICATION_ORCHESTRATOR_CPU_REQUEST=250m`
 - Workload-launcher pod env vars correctly read `250m`
-- **Despite all of this**, replication pods launch with 2 CPU / 2 Gi per container (4 CPU total request)
+- **Despite all of this**, replication pods launch with 2 CPU / 2 Gi per container (8 CPU total across 4 containers)
 - This exceeds available capacity on typical OpenShift worker nodes (90%+ CPU allocated)
 
 **Impact:** Replication pods fail to schedule (`Insufficient cpu`) on resource-constrained clusters, which is the norm for shared OpenShift environments.

@@ -46,7 +46,7 @@ class Document:
     id: int
     title: str
     content: str
-    doc_type: str
+    source: str
 
 
 @dataclass
@@ -77,7 +77,7 @@ def fetch_documents(conn: psycopg2.extensions.connection) -> list[Document]:
     """Read all documents from the Airbyte-synced output table."""
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            f"SELECT id, title, content, doc_type FROM {SOURCE_SCHEMA}.documents ORDER BY id"
+            f"SELECT id, title, content, source FROM {SOURCE_SCHEMA}.documents ORDER BY id"
         )
         return [Document(**row) for row in cur.fetchall()]
 
@@ -246,7 +246,7 @@ def run_pipeline() -> None:
     documents = fetch_documents(conn)
     print(f"  Loaded {len(documents)} documents")
     for doc in documents[:3]:
-        print(f"    - [{doc.doc_type}] {doc.title}")
+        print(f"    - [{doc.source}] {doc.title}")
     if len(documents) > 3:
         print(f"    ... and {len(documents) - 3} more")
 

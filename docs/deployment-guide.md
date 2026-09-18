@@ -28,7 +28,7 @@ helm version --short
 OpenShift requires a two-step namespace creation. Creating the namespace first lets OpenShift auto-populate the MCS security annotation; overriding UID/GID annotations afterward ensures Airbyte pods run as UID 1000.
 
 ```bash
-NAMESPACE="airbyte"
+NAMESPACE="airbyte-validation"
 
 oc new-project "${NAMESPACE}" \
   --display-name="Airbyte" \
@@ -101,7 +101,7 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: airbyte-server
-  namespace: airbyte  # match your namespace
+  namespace: airbyte-validation  # match your namespace
 spec:
   to:
     kind: Service
@@ -177,7 +177,7 @@ oc get pod <replication-pod-name> -n "${NAMESPACE}" -o json > /tmp/rep-pod.json
 # Reduce resource requests
 jq '
   .spec.initContainers[].resources = {"requests":{"cpu":"250m","memory":"512Mi"},"limits":{"cpu":"500m","memory":"1Gi"}} |
-  .spec.containers[].resources = {"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"500m","memory":"512Mi"}} |
+  .spec.containers[].resources = {"requests":{"cpu":"250m","memory":"512Mi"},"limits":{"cpu":"500m","memory":"1Gi"}} |
   del(.status, .metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp) |
   .metadata = {name: .metadata.name, namespace: .metadata.namespace, labels: .metadata.labels}
 ' /tmp/rep-pod.json > /tmp/rep-pod-fixed.json

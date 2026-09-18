@@ -45,8 +45,8 @@ oc get namespace airbyte-validation -o jsonpath='{.metadata.annotations}' | jq .
 
 # Show RHOAI pods healthy alongside Airbyte
 echo "--- RHOAI pods ---"
-oc get pods -n redhat-ods-applications --no-headers | wc -l
-echo "pods running"
+oc get pods -n redhat-ods-applications --no-headers | grep -c Running
+echo "RHOAI pods running"
 ```
 
 **Talking points:**
@@ -119,7 +119,7 @@ oc exec deploy/postgresql -n airbyte-validation -- \
 
 **Show:** Dashboard "Blockers" card
 
-> "We found one high-severity bug. Airbyte's replication orchestrator hardcodes 2 CPU per container in the pod spec, regardless of what you configure in Helm values. On a typical shared OpenShift cluster where nodes are 90%+ committed, the replication pod can't schedule."
+> "We found one high-severity bug. Airbyte ignores its own Helm-configured resource values when launching job pods. The ConfigMap has the right values, but the pods launch with different — usually much lower or much higher — resource requests. Replication pods request 2 CPU per container (8 CPU total), and check pods get 128Mi memory and OOMKill. Both are wrong."
 
 **Terminal — prove the bug in two commands:**
 

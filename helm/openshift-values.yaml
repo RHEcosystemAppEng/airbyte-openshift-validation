@@ -6,7 +6,7 @@
 #
 # Purpose: Configure Airbyte for OpenShift with restricted-v2 SCC compliance.
 # Usage:   helm install airbyte airbyte-v2/airbyte \
-#            --namespace airbyte --create-namespace \
+#            --namespace airbyte-validation \
 #            --values openshift-values.yaml \
 #            --version 2.1.1
 #
