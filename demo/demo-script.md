@@ -121,15 +121,24 @@ oc exec deploy/postgresql -n airbyte-validation -- \
 
 > "We found one high-severity bug. Airbyte's replication orchestrator hardcodes 2 CPU per container in the pod spec, regardless of what you configure in Helm values. On a typical shared OpenShift cluster where nodes are 90%+ committed, the replication pod can't schedule."
 
-**Terminal (if pods exist to show):**
+**Terminal — prove the bug in two commands:**
 
 ```bash
-# Show the ConfigMap has the correct values
+# 1. Show what Helm TOLD Airbyte to use (system-generated ConfigMap)
 oc get configmap airbyte-airbyte-env -n airbyte-validation -o json | \
-  jq '.data | with_entries(select(.key | contains("CPU")))'
+  jq '.data | with_entries(select(.key | contains("CHECK_JOB") or contains("REPLICATION_ORCHESTRATOR")))'
+
+# 2. Show what Airbyte ACTUALLY requested (live pod spec)
+#    Replace the pod name with whatever check/replication pod exists:
+oc get pods -n airbyte-validation --no-headers | grep -E 'check|replication'
+oc get pod $(oc get pods -n airbyte-validation --no-headers -o custom-columns=':metadata.name' | grep -E 'check|replication' | head -1) \
+  -n airbyte-validation \
+  -o jsonpath='{range .spec.containers[*]}{"  "}{.name}{": "}{.resources.requests.cpu}{" CPU / "}{.resources.requests.memory}{" memory\n"}{end}'
 ```
 
-> "The Helm chart correctly populates 250m CPU in the ConfigMap. The workload-launcher reads it. But the orchestrator ignores it and hardcodes 2 CPU. We proved this by manually patching the pod to 250m and the sync completed in 3 minutes. We've documented the workaround and this needs to go back to Airbyte as a bug report."
+> "The first command shows the ConfigMap — this is what Helm told Airbyte to use: 250m CPU. The second command shows what Airbyte actually put in the pod spec. These two values don't match. Airbyte ignores its own configuration."
+
+> "We proved this is the root cause by manually patching a replication pod to 250m — it scheduled immediately and the sync completed in 3 minutes, 72 rows. That's job 6 in the Airbyte UI."
 
 ---
 
