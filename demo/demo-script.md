@@ -84,7 +84,7 @@ oc exec deploy/postgresql -n airbyte-validation -- \
 # Show data in the DESTINATION (airbyte_output schema)  
 oc exec deploy/postgresql -n airbyte-validation -- \
   psql -U airbyte_test -d sample_data -c \
-  "SELECT tablename, n_live_tup as rows FROM pg_stat_user_tables WHERE schemaname = 'airbyte_output' ORDER BY tablename;"
+  "SELECT relname as tablename, n_live_tup as rows FROM pg_stat_user_tables WHERE schemaname = 'airbyte_output' AND relname NOT LIKE 'airbyte_%' ORDER BY relname;"
 
 # Show a sample document that would feed into a RAG pipeline
 oc exec deploy/postgresql -n airbyte-validation -- \
