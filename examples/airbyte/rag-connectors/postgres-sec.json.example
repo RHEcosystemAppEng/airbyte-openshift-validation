@@ -1,0 +1,17 @@
+{
+  "host": "postgresql.airbyte-validation.svc.cluster.local",
+  "port": 5432,
+  "database": "sample_data",
+  "username": "REPLACE_WITH_POSTGRES_USER",
+  "password": "REPLACE_WITH_POSTGRES_PASSWORD",
+  "schemas": ["public"],
+  "ssl_mode": {
+    "mode": "disable"
+  },
+  "tunnel_method": {
+    "tunnel_method": "NO_TUNNEL"
+  },
+  "replication_method": {
+    "method": "Standard"
+  }
+}

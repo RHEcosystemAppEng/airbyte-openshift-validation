@@ -1,0 +1,18 @@
+{
+  "credentials": {
+    "auth_type": "Service",
+    "service_account_info": "REPLACE_WITH_SERVICE_ACCOUNT_JSON"
+  },
+  "folder_url": "https://drive.google.com/drive/folders/REPLACE_COMPLIANCE_FOLDER_ID",
+  "streams": [
+    {
+      "name": "compliance_documents",
+      "globs": ["**/*"],
+      "format": {
+        "filetype": "document"
+      },
+      "validation_policy": "Emit Record",
+      "days_to_sync_if_history_is_full": 3
+    }
+  ]
+}

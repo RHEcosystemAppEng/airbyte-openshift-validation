@@ -128,7 +128,7 @@ All platform pods should be Running (bootloader will show Completed):
 oc get pods -n "${NAMESPACE}"
 ```
 
-Expected pods (10 total):
+Expected platform components (9 Airbyte pods plus external object storage):
 
 | Pod | Expected Status |
 |-----|-----------------|
@@ -140,7 +140,7 @@ Expected pods (10 total):
 | airbyte-cron | Running |
 | airbyte-manifest-server | Running |
 | airbyte-db-0 | Running |
-| airbyte-minio-0 | Running |
+| External S3-compatible object storage | Configured through `global.storage` |
 | airbyte-bootloader | Completed |
 
 Verify all pods run under restricted-v2 SCC:
@@ -157,6 +157,21 @@ Airbyte V2 exposes the Public API at `/api/public/v1/`. The internal `/api/v1/` 
 ```bash
 curl -s "https://${ROUTE}/api/public/v1/health" | jq .
 ```
+
+### RAG connector configuration
+
+The Phase 1 PostgreSQL validation remains in
+[`scripts/04-configure-airbyte.sh`](../scripts/04-configure-airbyte.sh). Set up
+the RAG scenario separately with
+[`scripts/05-configure-rag-connectors.sh`](../scripts/05-configure-rag-connectors.sh).
+It creates two Google Drive sources, an S3 source, a PostgreSQL source, an
+S3-compatible landing destination, and a PostgreSQL landing destination.
+
+Connector JSON files are deliberately kept outside Git because they contain
+credentials. Start with the redacted templates in
+[`examples/airbyte/rag-connectors/`](../examples/airbyte/rag-connectors/) and
+follow that directory's README. Connections are created as manual connections;
+validate each connector before triggering a sync.
 
 ---
 
@@ -285,3 +300,6 @@ worker:
 | `manifests/route.yaml` | OpenShift Route for Airbyte UI/API |
 | `scripts/01-deploy-airbyte.sh` | Automated deployment script (idempotent) |
 | `scripts/00-prereqs.sh` | Prerequisite validation script |
+| `scripts/04-configure-airbyte.sh` | Phase 1 PostgreSQL-to-PostgreSQL validation |
+| `scripts/05-configure-rag-connectors.sh` | RAG scenario source/destination/connection setup |
+| `examples/airbyte/rag-connectors/` | Redacted connector JSON templates and setup instructions |

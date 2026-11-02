@@ -1,0 +1,14 @@
+{
+  "s3_bucket_name": "REPLACE_RAG_LANDING_BUCKET",
+  "s3_bucket_path": "airbyte/landing",
+  "s3_bucket_region": "us-east-1",
+  "access_key_id": "REPLACE_WITH_S3_ACCESS_KEY",
+  "secret_access_key": "REPLACE_WITH_S3_SECRET_KEY",
+  "s3_endpoint": "",
+  "s3_path_format": "${NAMESPACE}/${STREAM_NAME}/${YEAR}_${MONTH}_${DAY}_${EPOCH}_",
+  "file_name_pattern": "{sync_id}_{part_number}.{format_extension}",
+  "format": {
+    "format_type": "JSONL",
+    "compression": "GZIP"
+  }
+}

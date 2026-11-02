@@ -145,7 +145,7 @@ Steps that OpenShift administrators must take when deploying Airbyte.
 | Authentication | `global.auth.enabled: false` | Enable with OIDC or built-in auth |
 | Telemetry | `global.tracking.enabled: false` | Enable if not air-gapped |
 | Database | Bundled PostgreSQL (2Gi PVC) | External managed PostgreSQL |
-| Object storage | Bundled MinIO (2Gi PVC) | ODF, S3, or external S3-compatible store |
+| Object storage | External S3-compatible store | ODF, AWS S3, or another S3-compatible service |
 | Resource sizing | Minimal requests (100-250m CPU) | Scale per workload requirements |
 | TLS | Edge termination at router | Consider passthrough or re-encrypt for sensitive data |
 | Node selectors | Cleared (`global.topology.*: ""`) | Set to dedicated node pools |

@@ -88,7 +88,7 @@ graph LR
 
 **Namespace isolation:** Airbyte runs in `airbyte-validation` with its own service accounts, RBAC, and resource quotas. RHOAI components remain in `redhat-ods-applications`. The two namespaces share no CRDs, service accounts, or cluster-scoped resources. Communication happens through the shared data layer (PostgreSQL accessed via in-cluster DNS).
 
-**Platform pods (all under restricted-v2 SCC):**
+**Platform components (Airbyte pods run under restricted-v2 SCC):**
 
 | Pod | Role | Status |
 |-----|------|--------|
@@ -100,7 +100,7 @@ graph LR
 | airbyte-cron | Scheduled tasks | Running |
 | airbyte-manifest-server | Connector builder | Running |
 | airbyte-db-0 | Bundled PostgreSQL | Running |
-| airbyte-minio-0 | Bundled object storage | Running |
+| External S3-compatible object storage | Configured through `global.storage` | Configured |
 | airbyte-bootloader | DB migration (one-time) | Completed |
 
 ---
