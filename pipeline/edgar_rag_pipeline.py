@@ -57,6 +57,8 @@ MANIFEST_PATH = os.environ.get("MANIFEST_PATH", "data/seed/manifests/seed-manife
 # Filing categories to process
 PROCESS_LEGAL = os.environ.get("PROCESS_LEGAL", "true").lower() == "true"
 PROCESS_COMPLIANCE = os.environ.get("PROCESS_COMPLIANCE", "true").lower() == "true"
+PROCESS_FACTSHEETS = os.environ.get("PROCESS_FACTSHEETS", "true").lower() == "true"
+FACTSHEET_DIR = os.environ.get("FACTSHEET_DIR", "data/seed/factsheets")
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +109,29 @@ def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str,
                 "category": category_dir,
             })
 
-    logger.info("Collected %d filings from %s", len(records), input_path)
+    # Fact sheets (Markdown rendered from SUB/NUM structured data)
+    if PROCESS_FACTSHEETS:
+        fs_dir = Path(FACTSHEET_DIR)
+        if fs_dir.is_dir():
+            for md_file in sorted(fs_dir.glob("*.md")):
+                stem = md_file.stem  # e.g. AAPL_320193 or AAPL_320193_FY2024
+                parts = stem.split("_")
+                ticker = parts[0] if len(parts) >= 2 else ""
+                cik = parts[1] if len(parts) >= 2 else ""
+                records.append({
+                    "path": str(md_file),
+                    "ticker": ticker,
+                    "cik": cik,
+                    "company": "",
+                    "filing_type": "factsheet",
+                    "filing_date": "",
+                    "accession": "",
+                    "category": "factsheet",
+                })
+            logger.info("Added %d fact sheets from %s",
+                        sum(1 for r in records if r["category"] == "factsheet"), fs_dir)
+
+    logger.info("Collected %d total inputs from %s", len(records), input_path)
     return records
 
 
@@ -125,8 +149,9 @@ class DoclingChunkActor:
 
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+        # HTML for EDGAR filings, MD for the rendered fact sheets
         self.converter = DocumentConverter(
-            allowed_formats=[InputFormat.HTML]
+            allowed_formats=[InputFormat.HTML, InputFormat.MD]
         )
         self.chunker = HybridChunker(
             tokenizer=EMBEDDING_MODEL, max_tokens=CHUNK_MAX_TOKENS
