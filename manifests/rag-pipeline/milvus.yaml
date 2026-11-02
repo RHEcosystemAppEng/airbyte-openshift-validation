@@ -1,0 +1,186 @@
+# Milvus standalone deployment for vector storage
+#
+# Deploys etcd + Milvus using an external S3-compatible object store.
+# The S3 endpoint and credentials are supplied through the
+# milvus-s3-config Secret; no storage credentials belong in Git.
+# The Secret uses Milvus's legacy `minio` configuration namespace; no MinIO
+# service or pod is deployed by these manifests.
+#
+# Before applying this directory, create the Secret from
+# milvus-user-config.yaml.example.
+#
+# Operator install (if not already present):
+#   oc apply -f https://raw.githubusercontent.com/milvus-io/milvus-operator/main/deploy/manifests/deployment.yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: milvus-data
+  labels:
+    app: milvus
+    app.kubernetes.io/part-of: edgar-rag-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# etcd for Milvus metadata
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus-etcd
+  labels:
+    app: milvus-etcd
+    app.kubernetes.io/part-of: edgar-rag-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus-etcd
+  template:
+    metadata:
+      labels:
+        app: milvus-etcd
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.5.16
+          command:
+            - etcd
+            - --advertise-client-urls=http://0.0.0.0:2379
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --data-dir=/etcd-data
+            - --auto-compaction-mode=revision
+            - --auto-compaction-retention=1000
+            - --max-request-bytes=33554432
+          ports:
+            - containerPort: 2379
+          env:
+            - name: ETCD_AUTO_COMPACTION_MODE
+              value: revision
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1000"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus-etcd
+  labels:
+    app: milvus-etcd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 2379
+      targetPort: 2379
+  selector:
+    app: milvus-etcd
+---
+# Milvus standalone with external S3-compatible storage
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus
+  labels:
+    app: milvus
+    app.kubernetes.io/part-of: edgar-rag-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus
+  template:
+    metadata:
+      labels:
+        app: milvus
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: milvus
+          image: milvusdb/milvus:v2.4.17
+          command: ["milvus", "run", "standalone"]
+          env:
+            - name: ETCD_ENDPOINTS
+              value: milvus-etcd:2379
+          ports:
+            - containerPort: 19530
+              name: grpc
+            - containerPort: 9091
+              name: metrics
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/milvus
+            - name: milvus-user-config
+              mountPath: /milvus/configs/user.yaml
+              subPath: user.yaml
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9091
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9091
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: milvus-data
+        - name: milvus-user-config
+          secret:
+            secretName: milvus-s3-config
+            items:
+              - key: user.yaml
+                path: user.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus-milvus
+  labels:
+    app: milvus
+spec:
+  type: ClusterIP
+  ports:
+    - port: 19530
+      targetPort: 19530
+      name: grpc
+    - port: 9091
+      targetPort: 9091
+      name: metrics
+  selector:
+    app: milvus

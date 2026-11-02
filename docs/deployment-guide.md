@@ -221,14 +221,24 @@ Replace bundled MinIO with S3-compatible storage (AWS S3, OpenShift Data Foundat
 global:
   storage:
     type: s3
+    secretName: airbyte-config-secrets
+    bucket:
+      log: airbyte-rag
+      state: airbyte-rag
+      workloadOutput: airbyte-rag
     s3:
-      bucket: your-bucket
-      region: us-east-1
-      accessKeyId: ""      # or use IAM roles / IRSA
-      secretAccessKey: ""
+      endpoint: ""         # set for ODF or another S3-compatible service
+      region: ""
+      authenticationType: credentials
+      accessKeyIdSecretKey: s3-access-key-id
+      secretAccessKeySecretKey: s3-secret-access-key
 minio:
   enabled: false
 ```
+
+Create `airbyte-config-secrets` before installing the chart. Do not put S3
+credentials in this values file. The RAG manifests use a separate
+`milvus-s3-config` Secret for Milvus's object-storage configuration.
 
 ### Authentication
 

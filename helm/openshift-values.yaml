@@ -61,12 +61,23 @@ global:
     enabled: false
     strategy: logging
 
-  # -- Internal Minio storage (default for community edition)
+  # -- External S3-compatible storage for Airbyte state and logs
   storage:
-    type: minio
-    minio:
-      accessKeyId: minio
-      secretAccessKey: minio123
+    type: s3
+    secretName: airbyte-config-secrets
+    bucket:
+      log: airbyte-rag
+      state: airbyte-rag
+      workloadOutput: airbyte-rag
+    s3:
+      # Set this for ODF or another S3-compatible endpoint. Leave empty for AWS S3.
+      endpoint: ""
+      region: ""
+      authenticationType: credentials
+      accessKeyIdSecretKey: s3-access-key-id
+      secretAccessKeySecretKey: s3-secret-access-key
+      accessKeyId: ""
+      secretAccessKey: ""
 
   # -- Workload configuration for connector jobs
   workloads:
@@ -490,22 +501,10 @@ postgresql:
 # -----------------------------------------------------------------------------
 # MinIO (bundled object storage)
 # -----------------------------------------------------------------------------
-# MinIO is used as the default object storage backend.
-# For production on OpenShift, consider using OpenShift Data Foundation (ODF)
-# or an external S3-compatible store.
+# Disabled because global.storage above points Airbyte at external S3-compatible
+# storage. Create airbyte-config-secrets before installing the chart.
 minio:
-  enabled: true
-
-  storage:
-    volumeClaimValue: 2Gi
-
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 250m
-      memory: 512Mi
+  enabled: false
 
 # -----------------------------------------------------------------------------
 # Stigg Sidecar - Disabled (enterprise only)

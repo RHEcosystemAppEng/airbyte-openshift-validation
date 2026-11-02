@@ -1,0 +1,16 @@
+# Deploy order:
+#   1. Create the milvus-s3-config Secret from milvus-user-config.yaml.example
+#   2. oc apply -k manifests/rag-pipeline/         # infra: PVCs, Milvus, RayCluster
+#   3. Upload seed data + pipeline code to the seed-data PVC
+#   4. Wait for Milvus readiness:
+#        oc wait --for=condition=ready pod -l app=milvus --timeout=120s
+#   5. oc apply -f manifests/rag-pipeline/rayjob-edgar-pipeline.yaml  # run the pipeline
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: airbyte-validation
+
+resources:
+  - seed-data-pvc.yaml
+  - milvus.yaml
+  - raycluster.yaml

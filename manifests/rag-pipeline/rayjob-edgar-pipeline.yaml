@@ -1,0 +1,93 @@
+# RayJob that runs the EDGAR RAG ingestion pipeline
+#
+# Do NOT include in kustomization.yaml — apply separately after:
+#   1. RayCluster "edgar-rag" is running
+#   2. Seed data + pipeline code uploaded to the seed-data PVC
+#   3. Milvus is ready: oc wait --for=condition=ready pod -l app=milvus --timeout=120s
+#
+# Apply:
+#   oc apply -f manifests/rag-pipeline/rayjob-edgar-pipeline.yaml
+#
+# Actor counts are sized for the validation cluster (2 workers × 2 CPU = 4 CPUs):
+#   Docling: 2 actors × 1 CPU = 2 CPUs
+#   Embed:   1 actor  × 2 CPU = 2 CPUs
+#   Milvus:  1 actor  × 1 CPU = 1 CPU
+#   Total ~5 CPUs — Ray queues actors as slots free up.
+apiVersion: ray.io/v1
+kind: RayJob
+metadata:
+  name: edgar-rag-ingest
+  namespace: airbyte-validation
+  labels:
+    app.kubernetes.io/part-of: edgar-rag-pipeline
+    app.kubernetes.io/component: job
+spec:
+  submissionMode: K8sJobMode
+  clusterSelector:
+    ray.io/cluster: edgar-rag
+
+  # The submitter pod runs `ray job submit` and needs the pipeline code
+  # at working_dir to upload it to the cluster.
+  submitterPodTemplate:
+    metadata:
+      labels:
+        app: edgar-rag-submitter
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: ray-job-submitter
+          image: rayproject/ray:2.54.0-py311
+          volumeMounts:
+            - name: seed-data
+              mountPath: /data/seed
+              readOnly: true
+            - name: pipeline-code
+              mountPath: /data/pipeline
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      restartPolicy: Never
+      volumes:
+        - name: seed-data
+          persistentVolumeClaim:
+            claimName: seed-data
+        - name: pipeline-code
+          persistentVolumeClaim:
+            claimName: seed-data
+
+  runtimeEnvYAML: |
+    pip:
+      - docling>=2.0
+      - docling-core
+      - sentence-transformers>=3.0
+      - pymilvus>=2.4
+    working_dir: /data/pipeline
+    env_vars:
+      INPUT_PATH: /data/seed/drive
+      MANIFEST_PATH: /data/seed/manifests/seed-manifest.json
+      FACTSHEET_DIR: /data/seed/factsheets
+      MILVUS_HOST: milvus-milvus.airbyte-validation.svc.cluster.local
+      MILVUS_PORT: "19530"
+      MILVUS_COLLECTION: edgar_filings
+      DROP_EXISTING_COLLECTION: "true"
+      PROCESS_LEGAL: "true"
+      PROCESS_COMPLIANCE: "true"
+      PROCESS_FACTSHEETS: "true"
+      NUM_DOCLING_ACTORS: "2"
+      CPUS_PER_DOCLING_ACTOR: "1"
+      NUM_EMBED_ACTORS: "1"
+      NUM_MILVUS_ACTORS: "1"
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_DIM: "384"
+
+  entrypoint: python edgar_rag_pipeline.py
+
+  shutdownAfterJobFinishes: false
+  ttlSecondsAfterFinished: 3600
+
+  activeDeadlineSeconds: 7200

@@ -1,0 +1,117 @@
+# RayCluster for the EDGAR RAG ingestion pipeline
+#
+# Requires: KubeRay operator installed via RHOAI or standalone
+#   oc apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/default/kustomization.yaml
+#
+# Validation sizing (2 workers × 2 CPU = 4 worker CPUs):
+#   Docling: 2 actors × 1 CPU = 2 CPUs
+#   Embed:   1 actor  × 2 CPU = 2 CPUs
+#   Milvus:  1 actor  × 1 CPU = 1 CPU  (oversubscribed, acceptable for validation)
+#   Total:   ~5 CPUs requested — Ray will queue actors as slots free up
+#
+# For larger runs, scale maxReplicas and bump actor counts in the RayJob env vars.
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: edgar-rag
+  labels:
+    app.kubernetes.io/part-of: edgar-rag-pipeline
+    app.kubernetes.io/component: compute
+spec:
+  rayVersion: "2.54.0"
+  headGroupSpec:
+    serviceType: ClusterIP
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      num-cpus: "0"
+    template:
+      metadata:
+        labels:
+          app: edgar-rag-head
+      spec:
+        securityContext:
+          runAsNonRoot: true
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.54.0-py311
+            ports:
+              - containerPort: 6379
+                name: gcs
+              - containerPort: 8265
+                name: dashboard
+              - containerPort: 10001
+                name: client
+            resources:
+              requests:
+                cpu: "1"
+                memory: 2Gi
+              limits:
+                cpu: "1"
+                memory: 2Gi
+            env:
+              - name: RAY_GRAFANA_IFRAME_HOST
+                value: ""
+            volumeMounts:
+              - name: seed-data
+                mountPath: /data/seed
+                readOnly: true
+              - name: pipeline-code
+                mountPath: /data/pipeline
+                readOnly: true
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              seccompProfile:
+                type: RuntimeDefault
+        volumes:
+          - name: seed-data
+            persistentVolumeClaim:
+              claimName: seed-data
+          - name: pipeline-code
+            persistentVolumeClaim:
+              claimName: seed-data
+  workerGroupSpecs:
+    - groupName: workers
+      replicas: 2
+      minReplicas: 1
+      maxReplicas: 4
+      rayStartParams:
+        num-cpus: "2"
+      template:
+        metadata:
+          labels:
+            app: edgar-rag-worker
+        spec:
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: ray-worker
+              image: rayproject/ray:2.54.0-py311
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 4Gi
+                limits:
+                  cpu: "2"
+                  memory: 4Gi
+              volumeMounts:
+                - name: seed-data
+                  mountPath: /data/seed
+                  readOnly: true
+                - name: pipeline-code
+                  mountPath: /data/pipeline
+                  readOnly: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+          volumes:
+            - name: seed-data
+              persistentVolumeClaim:
+                claimName: seed-data
+            - name: pipeline-code
+              persistentVolumeClaim:
+                claimName: seed-data

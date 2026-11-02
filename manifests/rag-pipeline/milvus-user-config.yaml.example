@@ -1,0 +1,20 @@
+# Example only; do not apply directly.
+#
+# Create the Kubernetes Secret consumed by milvus.yaml:
+#   oc create secret generic milvus-s3-config \
+#     --from-file=user.yaml=milvus-user-config.yaml \
+#     --namespace airbyte-validation
+#
+# Replace every placeholder with the cluster's S3-compatible endpoint and
+# credentials. Keep this file local or manage the Secret through your
+# approved secret-management system.
+
+minio:
+  address: s3.example.invalid
+  port: 443
+  accessKeyID: REPLACE_ME
+  secretAccessKey: REPLACE_ME
+  useSSL: true
+  bucketName: edgar-rag
+  rootPath: milvus/edgar-rag
+  useVirtualHost: false
