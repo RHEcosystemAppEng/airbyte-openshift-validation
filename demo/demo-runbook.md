@@ -146,3 +146,36 @@ If you can't connect to ai-dev02:
 4. Show the coexistence report (`reports/coexistence-check.txt`) for RHOAI health evidence
 
 All evidence was captured at validation time and is available offline.
+
+---
+
+## Appendix: Run the RAG Query Set
+
+After the EDGAR pipeline has populated Milvus, run the curated demo queries:
+
+```bash
+python - <<'PY'
+import json
+
+from pipeline.rag_query import EdgarRAG
+
+with open("demo/queries.json") as f:
+    query_set = json.load(f)
+
+rag = EdgarRAG()
+for item in query_set["queries"]:
+    result = rag.search(item["question"], **item["search"])
+    categories = sorted({chunk["category"] for chunk in result})
+    print(f"{item['id']}: {len(result)} chunks; categories={categories}")
+    rag.print_results({
+        "question": item["question"],
+        "chunks": result,
+        "answer": None,
+        "filters": item["search"],
+    })
+PY
+```
+
+The fact-sheet queries should return `category=factsheet`. The two mixed-source
+queries should be run without a category filter and should retrieve both
+`factsheet` and `compliance` chunks when both inputs are indexed.

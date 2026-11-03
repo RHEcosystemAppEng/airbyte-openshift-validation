@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "description": "Demo and evaluation queries for the EDGAR RAG pipeline.",
+  "usage": "Pass each question to EdgarRAG.search() or EdgarRAG.ask() using the values in search.",
+  "queries": [
+    {
+      "id": "aapl-debt-to-equity",
+      "question": "What is Apple's debt-to-equity ratio, using total liabilities and stockholders' equity?",
+      "search": {
+        "ticker": "AAPL",
+        "category": "factsheet",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["factsheet"],
+        "source_terms": ["Total Liabilities", "Stockholders' Equity"],
+        "answer_contains": ["$308.0B", "$57.0B"],
+        "derived_answer": {
+          "metric": "debt-to-equity ratio",
+          "formula": "Total Liabilities / Stockholders' Equity",
+          "expected_value": 5.4,
+          "tolerance": 0.1
+        },
+        "purpose": "Structured financial ratio lookup from a fact sheet."
+      }
+    },
+    {
+      "id": "aapl-revenue-trend",
+      "question": "How did Apple's quarterly revenue and net income change across the reported quarters?",
+      "search": {
+        "ticker": "AAPL",
+        "category": "factsheet",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["factsheet"],
+        "source_terms": ["Quarterly Revenue Trend", "Revenue", "Net Income"],
+        "answer_contains": ["$119.6B", "$85.8B", "$33.9B"],
+        "purpose": "Quarterly trend retrieval from the structured fact sheet."
+      }
+    },
+    {
+      "id": "msft-liquidity",
+      "question": "What are Microsoft's cash, current assets, current liabilities, and long-term debt?",
+      "search": {
+        "ticker": "MSFT",
+        "category": "factsheet",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["factsheet"],
+        "source_terms": ["Cash & Equivalents", "Total Current Assets", "Total Current Liabilities", "Long-term Debt"],
+        "answer_contains": ["$18.3B", "$159.7B", "$125.3B", "$42.7B"],
+        "purpose": "Liquidity and debt lookup from a structured balance sheet."
+      }
+    },
+    {
+      "id": "aapl-financial-cross-source",
+      "question": "What financial risks and balance-sheet facts should I consider when evaluating Apple as a counterparty?",
+      "search": {
+        "ticker": "AAPL",
+        "top_k": 10
+      },
+      "expected": {
+        "categories": ["factsheet", "compliance"],
+        "preferred_source": "mixed",
+        "purpose": "Demonstrate that one vector search can retrieve both fact-sheet tables and filing prose."
+      }
+    },
+    {
+      "id": "msft-risk-factors",
+      "question": "What are Microsoft's principal risk factors?",
+      "search": {
+        "ticker": "MSFT",
+        "filing_type": "10-K",
+        "category": "compliance",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["compliance"],
+        "source_terms": ["risk factors"],
+        "purpose": "Retrieve narrative risk disclosures from a seeded 10-K outside the AAPL demo path."
+      }
+    },
+    {
+      "id": "aapl-material-contracts",
+      "question": "What material commercial agreements or contracts does Apple disclose?",
+      "search": {
+        "ticker": "AAPL",
+        "category": "legal",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["legal"],
+        "purpose": "Retrieve legal and commercial agreement disclosures from EX-10 exhibits."
+      }
+    },
+    {
+      "id": "jpm-regulatory-exposure",
+      "question": "What regulatory, legal, or compliance exposures does JPMorgan disclose?",
+      "search": {
+        "ticker": "JPM",
+        "category": "compliance",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["compliance"],
+        "purpose": "Show that the same query pattern works for a financial-services company."
+      }
+    },
+    {
+      "id": "amzn-cash-flow",
+      "question": "What are Amazon's operating cash flow and share buybacks?",
+      "search": {
+        "ticker": "AMZN",
+        "category": "factsheet",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["factsheet"],
+        "source_terms": ["Cash from Operations", "Share Buybacks"],
+        "answer_contains": ["$84.9B", "$0.00"],
+        "purpose": "Retrieve metrics that are actually present in Amazon's seeded fact sheet."
+      }
+    },
+    {
+      "id": "amzn-quarterly-filing",
+      "question": "What recent quarterly financial or operational updates does Amazon disclose?",
+      "search": {
+        "ticker": "AMZN",
+        "filing_type": "10-Q",
+        "category": "compliance",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": ["compliance"],
+        "purpose": "Exercise filtered retrieval against a non-AAPL 10-Q."
+      }
+    },
+    {
+      "id": "jpm-legal-empty",
+      "question": "What material commercial agreements does JPMorgan disclose?",
+      "search": {
+        "ticker": "JPM",
+        "category": "legal",
+        "top_k": 5
+      },
+      "expected": {
+        "categories": [],
+        "max_results": 0,
+        "purpose": "Negative case: JPMorgan has no legal-category seed documents, so this should return no chunks."
+      }
+    },
+    {
+      "id": "aapl-source-comparison",
+      "question": "Compare Apple's reported financial metrics in the fact sheet with the supporting 10-Q discussion.",
+      "search": {
+        "ticker": "AAPL",
+        "top_k": 10
+      },
+      "expected": {
+        "categories": ["factsheet", "compliance"],
+        "preferred_source": "mixed",
+        "purpose": "Validate mixed retrieval and source citations across structured and narrative inputs."
+      }
+    }
+  ]
+}
