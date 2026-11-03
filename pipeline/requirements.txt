@@ -3,3 +3,4 @@ docling>=2.0
 sentence-transformers>=3.0
 pymilvus>=2.4
 openai>=1.0
+boto3>=1.34

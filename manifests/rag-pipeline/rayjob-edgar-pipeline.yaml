@@ -1,18 +1,15 @@
 # RayJob that runs the EDGAR RAG ingestion pipeline
 #
 # Do NOT include in kustomization.yaml — apply separately after:
-#   1. RayCluster "edgar-rag" is running
-#   2. Seed data + pipeline code uploaded to the seed-data PVC
-#   3. Milvus is ready: oc wait --for=condition=ready pod -l app=milvus --timeout=120s
+#   1. edgar-seed-s3 and milvus-s3-config Secrets exist
+#   2. Seed corpus uploaded to s3://$S3_BUCKET/$S3_PREFIX/
+#   3. RayCluster "edgar-rag" is running on the custom image
+#   4. Milvus is ready: oc wait --for=condition=ready pod -l app=milvus --timeout=180s
 #
 # Apply:
 #   oc apply -f manifests/rag-pipeline/rayjob-edgar-pipeline.yaml
 #
-# Actor counts are sized for the validation cluster (2 workers × 2 CPU = 4 CPUs):
-#   Docling: 2 actors × 1 CPU = 2 CPUs
-#   Embed:   1 actor  × 2 CPU = 2 CPUs
-#   Milvus:  1 actor  × 1 CPU = 1 CPU
-#   Total ~5 CPUs — Ray queues actors as slots free up.
+# Actor counts are sized for the validation cluster (2 workers × 2 CPU = 4 CPUs).
 apiVersion: ray.io/v1
 kind: RayJob
 metadata:
@@ -26,8 +23,7 @@ spec:
   clusterSelector:
     ray.io/cluster: edgar-rag
 
-  # The submitter pod runs `ray job submit` and needs the pipeline code
-  # at working_dir to upload it to the cluster.
+  # Submitter uses the same image (pipeline code is baked in). No PVC.
   submitterPodTemplate:
     metadata:
       labels:
@@ -37,14 +33,16 @@ spec:
         runAsNonRoot: true
       containers:
         - name: ray-job-submitter
-          image: rayproject/ray:2.54.0-py311
-          volumeMounts:
-            - name: seed-data
-              mountPath: /data/seed
-              readOnly: true
-            - name: pipeline-code
-              mountPath: /data/pipeline
-              readOnly: true
+          # Replace with your immutable image tag or digest before apply.
+          image: quay.io/EXAMPLE/edgar-rag-ray:0.1.0
+          env:
+            - name: INPUT_SOURCE
+              value: s3
+            - name: PYTHONPATH
+              value: /opt/edgar-rag
+          envFrom:
+            - secretRef:
+                name: edgar-seed-s3
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -52,25 +50,12 @@ spec:
             seccompProfile:
               type: RuntimeDefault
       restartPolicy: Never
-      volumes:
-        - name: seed-data
-          persistentVolumeClaim:
-            claimName: seed-data
-        - name: pipeline-code
-          persistentVolumeClaim:
-            claimName: seed-data
 
+  # Deps and code come from the image; runtimeEnv only sets job env vars.
   runtimeEnvYAML: |
-    pip:
-      - docling>=2.0
-      - docling-core
-      - sentence-transformers>=3.0
-      - pymilvus>=2.4
-    working_dir: /data/pipeline
     env_vars:
-      INPUT_PATH: /data/seed/drive
-      MANIFEST_PATH: /data/seed/manifests/seed-manifest.json
-      FACTSHEET_DIR: /data/seed/factsheets
+      INPUT_SOURCE: s3
+      PYTHONPATH: /opt/edgar-rag
       MILVUS_HOST: milvus-milvus.airbyte-validation.svc.cluster.local
       MILVUS_PORT: "19530"
       MILVUS_COLLECTION: edgar_filings
@@ -85,7 +70,7 @@ spec:
       EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
       EMBEDDING_DIM: "384"
 
-  entrypoint: python edgar_rag_pipeline.py
+  entrypoint: python -m pipeline.edgar_rag_pipeline
 
   shutdownAfterJobFinishes: false
   ttlSecondsAfterFinished: 3600

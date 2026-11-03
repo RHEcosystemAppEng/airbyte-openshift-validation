@@ -18,10 +18,22 @@ upstream blocks are available (streaming execution).
 
 Two input types land in the same collection:
 
-- **Filings** — EX-10 exhibits and 10-K/10-Q/8-K HTML from `data/seed/drive`.
-- **Fact sheets** — Markdown summaries rendered from the structured XBRL
-  SUB/NUM tables by `factsheet.py`. These give the retriever clean,
-  tabular financials that are hard to extract reliably from filing prose.
+- **Filings** — EX-10 exhibits and 10-K/10-Q/8-K HTML under `drive/legal` and `drive/compliance`.
+- **Fact sheets** — Markdown summaries rendered from SUB/NUM by `factsheet.py`.
+
+On cluster, inputs are read from S3 (`INPUT_SOURCE=s3`). Each Docling actor
+downloads its object to `/tmp`, parses it, then deletes the temp file. Local
+runs can still use `INPUT_SOURCE=local` against `data/seed/`.
+
+Expected S3 layout (prefix default `edgar-seed/`):
+
+```text
+edgar-seed/
+  drive/legal/
+  drive/compliance/
+  factsheets/
+  manifests/seed-manifest.json
+```
 
 ## Differences from the Reference Example
 
@@ -46,6 +58,8 @@ Two input types land in the same collection:
 | `edgar_rag_pipeline.py` | RayJob entrypoint — 3-stage ingestion pipeline        |
 | `factsheet.py`          | Renders SUB/NUM XBRL data into Markdown fact sheets   |
 | `rag_query.py`          | Query helpers — search with metadata filters, LLM Q&A |
+| `smoke_s3_input.py`     | Local S3 download + Docling smoke (HTML + MD)        |
+| `Dockerfile`            | Ray image with pipeline code + deps                   |
 | `requirements.txt`      | Python dependencies                                   |
 
 
@@ -57,9 +71,20 @@ Two input types land in the same collection:
 
 - Ray cluster (or `ray start --head` for local testing)
 - Milvus instance accessible from the Ray workers
-- Seed corpus generated (`make seed` or `make seed-quick`)
+- Seed corpus generated (`make seed` or `make seed-quick`) and, for cluster runs, uploaded to S3
+- Custom Ray image built from `pipeline/Dockerfile` (cluster)
 
+### Build the Ray image
 
+```bash
+# From repo root — pin an immutable tag (or digest after push)
+docker build -f pipeline/Dockerfile -t quay.io/<org>/edgar-rag-ray:0.1.0 .
+docker push quay.io/<org>/edgar-rag-ray:0.1.0
+```
+
+Replace `quay.io/EXAMPLE/edgar-rag-ray:0.1.0` in
+`manifests/rag-pipeline/raycluster.yaml` and
+`manifests/rag-pipeline/rayjob-edgar-pipeline.yaml` with that tag or digest.
 
 ### Generate Fact Sheets
 
@@ -99,22 +124,39 @@ per tag. Values are selected from unsegmented rows (`qtrs` 0 or 4 for annual,
 
 Run this before the pipeline if `PROCESS_FACTSHEETS` is enabled.
 
+### S3 smoke test (before cluster apply)
+
+Against the real S3-compatible endpoint, download and parse one HTML filing
+and one Markdown fact sheet:
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1
+export S3_ENDPOINT=...          # empty for AWS S3
+export S3_ADDRESSING_STYLE=path # recommended for S3-compatible endpoints
+export S3_BUCKET=...
+export S3_PREFIX=edgar-seed
+
+python -m pipeline.smoke_s3_input
+```
+
 ### Run the Pipeline
 
 ```bash
-# Set Milvus connection (on-cluster defaults work if Milvus is deployed)
+# Local filesystem mode
+export INPUT_SOURCE=local
 export MILVUS_HOST=localhost
 export MILVUS_PORT=19530
-
-# Point to seed data
 export INPUT_PATH=data/seed/drive
 export MANIFEST_PATH=data/seed/manifests/seed-manifest.json
+export FACTSHEET_DIR=data/seed/factsheets
+python -m pipeline.edgar_rag_pipeline
 
-# Run
-python pipeline/edgar_rag_pipeline.py
+# S3 mode (same env as smoke test + Milvus)
+export INPUT_SOURCE=s3
+python -m pipeline.edgar_rag_pipeline
 ```
-
-
 
 ### Configuration
 
@@ -123,6 +165,11 @@ All parameters are environment variables:
 
 | Variable                 | Default                                | Description                         |
 | ------------------------ | -------------------------------------- | ----------------------------------- |
+| `INPUT_SOURCE`           | local                                  | `s3` or `local`                     |
+| `S3_BUCKET`              | (required for s3)                      | Seed bucket                         |
+| `S3_PREFIX`              | edgar-seed                             | Prefix under the bucket             |
+| `S3_ENDPOINT`            | empty                                  | S3-compatible endpoint (empty=AWS)  |
+| `S3_ADDRESSING_STYLE`    | auto (path when endpoint is set)      | boto3 addressing style              |
 | `NUM_DOCLING_ACTORS`     | 4                                      | Parallel Docling parsing actors     |
 | `CPUS_PER_DOCLING_ACTOR` | 2                                      | CPUs per Docling actor              |
 | `NUM_EMBED_ACTORS`       | 2                                      | Parallel embedding actors           |
@@ -134,9 +181,9 @@ All parameters are environment variables:
 | `PROCESS_LEGAL`          | true                                   | Include EX-10 exhibits              |
 | `PROCESS_COMPLIANCE`     | true                                   | Include 10-K/10-Q/8-K filings       |
 | `PROCESS_FACTSHEETS`     | true                                   | Include rendered Markdown fact sheets |
-| `FACTSHEET_DIR`          | data/seed/factsheets                   | Path to rendered fact sheets        |
-| `INPUT_PATH`             | data/seed/drive                        | Path to seed HTML filings           |
-| `MANIFEST_PATH`          | data/seed/manifests/seed-manifest.json | Seed manifest for metadata          |
+| `FACTSHEET_DIR`          | data/seed/factsheets                   | Local fact sheets (`INPUT_SOURCE=local`) |
+| `INPUT_PATH`             | data/seed/drive                        | Local HTML filings (`local` mode)   |
+| `MANIFEST_PATH`          | data/seed/manifests/seed-manifest.json | Local manifest (`local` mode)       |
 
 
 

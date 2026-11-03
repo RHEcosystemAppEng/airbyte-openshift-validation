@@ -1,0 +1,14 @@
+.git
+.gitignore
+.dockerignore
+graphify-out
+.agents
+.codex
+data/seed
+reports
+demo/screenshots
+**/__pycache__
+*.pyc
+*.pyo
+*.swp
+.DS_Store

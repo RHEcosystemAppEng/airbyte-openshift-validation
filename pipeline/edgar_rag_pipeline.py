@@ -2,24 +2,30 @@
 
 3-stage Ray Data pipeline adapted from the Red Hat AI examples
 (examples/ray/data/rag/ray-data-pipeline):
-  Stage 1: DoclingChunkActor   — parse HTML filings + chunk (CPU)
+  Stage 1: DoclingChunkActor   — parse HTML/MD + chunk (CPU)
   Stage 2: EmbedActor          — sentence-transformers embeddings (CPU)
   Stage 3: MilvusWriteActor    — insert vectors + metadata into Milvus
 
-Designed to run as a RayJob on a RayCluster in RHOAI. Can also run
-locally for testing with `ray start --head` + `python edgar_rag_pipeline.py`.
+Designed to run as a RayJob on a RayCluster in RHOAI from a custom image
+that contains this package. The cluster manifests select S3 input; local
+execution can use a local seed directory.
 
-Input: HTML filings from the SEC EDGAR seed corpus (data/seed/drive/).
-Each file's metadata (ticker, CIK, filing type) is extracted from the
-directory structure and seed manifest.
+S3 layout (under S3_PREFIX, default edgar-seed/):
+  drive/legal/
+  drive/compliance/
+  factsheets/
+  manifests/seed-manifest.json
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
+import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import ray
 
@@ -50,40 +56,116 @@ DROP_EXISTING_COLLECTION = os.environ.get("DROP_EXISTING_COLLECTION", "true").lo
 
 CHUNK_MAX_TOKENS = int(os.environ.get("CHUNK_MAX_TOKENS", "256"))
 
-# Input path — either a PVC mount (on-cluster) or local seed directory
+# Input: "s3" (selected by cluster manifests) or "local" (default for local testing)
+INPUT_SOURCE = os.environ.get("INPUT_SOURCE", "local").lower()
+
+# Local fallbacks
 INPUT_PATH = os.environ.get("INPUT_PATH", "data/seed/drive")
 MANIFEST_PATH = os.environ.get("MANIFEST_PATH", "data/seed/manifests/seed-manifest.json")
+FACTSHEET_DIR = os.environ.get("FACTSHEET_DIR", "data/seed/factsheets")
 
-# Filing categories to process
+# S3 seed corpus
+S3_BUCKET = os.environ.get("S3_BUCKET", "")
+S3_PREFIX = os.environ.get("S3_PREFIX", "edgar-seed").strip("/")
+# Prefer S3_ENDPOINT; AWS_ENDPOINT_URL is also accepted for boto3 compatibility.
+S3_ENDPOINT = os.environ.get("S3_ENDPOINT") or os.environ.get("AWS_ENDPOINT_URL") or ""
+S3_ADDRESSING_STYLE = os.environ.get(
+    "S3_ADDRESSING_STYLE", "path" if S3_ENDPOINT else "auto"
+)
+
 PROCESS_LEGAL = os.environ.get("PROCESS_LEGAL", "true").lower() == "true"
 PROCESS_COMPLIANCE = os.environ.get("PROCESS_COMPLIANCE", "true").lower() == "true"
 PROCESS_FACTSHEETS = os.environ.get("PROCESS_FACTSHEETS", "true").lower() == "true"
-FACTSHEET_DIR = os.environ.get("FACTSHEET_DIR", "data/seed/factsheets")
+
+
+# ---------------------------------------------------------------------------
+# S3 helpers
+# ---------------------------------------------------------------------------
+
+def _s3_client():
+    """Build a boto3 S3 client from the environment / edgar-seed-s3 Secret."""
+    import boto3
+    from botocore.config import Config
+
+    kwargs: Dict[str, Any] = {
+        "config": Config(
+            signature_version="s3v4",
+            s3={"addressing_style": S3_ADDRESSING_STYLE},
+        ),
+    }
+    if S3_ENDPOINT:
+        kwargs["endpoint_url"] = S3_ENDPOINT
+    # Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+    # AWS_DEFAULT_REGION in the environment (injected from edgar-seed-s3).
+    return boto3.client("s3", **kwargs)
+
+
+def _s3_join(*parts: str) -> str:
+    return "/".join(p.strip("/") for p in parts if p and p.strip("/"))
+
+
+def _list_s3_keys(client, bucket: str, prefix: str, suffixes: tuple) -> List[str]:
+    """List object keys under prefix that end with one of suffixes."""
+    keys: List[str] = []
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/"):
+                continue
+            lower = key.lower()
+            if any(lower.endswith(sfx) for sfx in suffixes):
+                keys.append(key)
+    return sorted(keys)
+
+
+def _load_manifest_from_s3(client, bucket: str, prefix: str) -> dict:
+    key = _s3_join(prefix, "manifests/seed-manifest.json")
+    try:
+        body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+        manifest = json.loads(body)
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not load required S3 manifest s3://{bucket}/{key}"
+        ) from e
+    if not isinstance(manifest, dict):
+        raise ValueError(f"S3 manifest s3://{bucket}/{key} must contain a JSON object")
+    return manifest
+
+
+def download_s3_object(client, bucket: str, key: str, dest_path: str) -> None:
+    """Download a single S3 object to dest_path."""
+    Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+    client.download_file(bucket, key, dest_path)
 
 
 # ---------------------------------------------------------------------------
 # Input collection
 # ---------------------------------------------------------------------------
 
-def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str, str]]:
-    """Build a list of filing records with metadata from the seed manifest.
-
-    Each record has: path, ticker, cik, company, filing_type, filing_date, accession
-    """
-    manifest = {}
-    if os.path.isfile(manifest_path):
-        with open(manifest_path) as f:
-            manifest = json.load(f)
-
-    # Build lookup from filename -> manifest entry
-    manifest_lookup = {}
+def _manifest_lookup(manifest: dict) -> Dict[str, dict]:
+    lookup: Dict[str, dict] = {}
     for category in ("legal", "compliance"):
         for entry in manifest.get(category, []):
             fname = entry.get("filename", "")
             if fname:
-                manifest_lookup[fname] = entry
+                lookup[fname] = entry
+    return lookup
 
-    records = []
+
+def collect_local_inputs(
+    input_path: str,
+    manifest_path: str,
+    factsheet_dir: str,
+) -> List[Dict[str, str]]:
+    """Build filing records from a local seed directory."""
+    manifest = {}
+    if os.path.isfile(manifest_path):
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    lookup = _manifest_lookup(manifest)
+
+    records: List[Dict[str, str]] = []
     root = Path(input_path)
 
     for category_dir, enabled in [("legal", PROCESS_LEGAL), ("compliance", PROCESS_COMPLIANCE)]:
@@ -93,13 +175,13 @@ def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str,
         if not cat_path.is_dir():
             logger.warning("Directory not found: %s", cat_path)
             continue
-
         for html_file in sorted(list(cat_path.rglob("*.html")) + list(cat_path.rglob("*.htm"))):
             fname = html_file.name
-            meta = manifest_lookup.get(fname, {})
-
+            meta = lookup.get(fname, {})
             records.append({
+                "source": "local",
                 "path": str(html_file),
+                "s3_key": "",
                 "ticker": meta.get("ticker", ""),
                 "cik": str(meta.get("cik", "")),
                 "company": meta.get("company", ""),
@@ -109,17 +191,17 @@ def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str,
                 "category": category_dir,
             })
 
-    # Fact sheets (Markdown rendered from SUB/NUM structured data)
     if PROCESS_FACTSHEETS:
-        fs_dir = Path(FACTSHEET_DIR)
+        fs_dir = Path(factsheet_dir)
         if fs_dir.is_dir():
             for md_file in sorted(fs_dir.glob("*.md")):
-                stem = md_file.stem  # e.g. AAPL_320193 or AAPL_320193_FY2024
-                parts = stem.split("_")
+                parts = md_file.stem.split("_")
                 ticker = parts[0] if len(parts) >= 2 else ""
                 cik = parts[1] if len(parts) >= 2 else ""
                 records.append({
+                    "source": "local",
                     "path": str(md_file),
+                    "s3_key": "",
                     "ticker": ticker,
                     "cik": cik,
                     "company": "",
@@ -128,19 +210,94 @@ def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str,
                     "accession": "",
                     "category": "factsheet",
                 })
-            logger.info("Added %d fact sheets from %s",
-                        sum(1 for r in records if r["category"] == "factsheet"), fs_dir)
 
-    logger.info("Collected %d total inputs from %s", len(records), input_path)
+    logger.info("Collected %d local inputs from %s", len(records), input_path)
     return records
 
 
+def collect_s3_inputs(bucket: str, prefix: str) -> List[Dict[str, str]]:
+    """Build filing records from S3 object keys under prefix."""
+    if not bucket:
+        raise ValueError("S3_BUCKET is required when INPUT_SOURCE=s3")
+
+    client = _s3_client()
+    manifest = _load_manifest_from_s3(client, bucket, prefix)
+    lookup = _manifest_lookup(manifest)
+    records: List[Dict[str, str]] = []
+
+    for category_dir, enabled in [("legal", PROCESS_LEGAL), ("compliance", PROCESS_COMPLIANCE)]:
+        if not enabled:
+            continue
+        cat_prefix = _s3_join(prefix, "drive", category_dir) + "/"
+        keys = _list_s3_keys(client, bucket, cat_prefix, (".html", ".htm"))
+        for key in keys:
+            fname = key.rsplit("/", 1)[-1]
+            meta = lookup.get(fname, {})
+            records.append({
+                "source": "s3",
+                "path": "",
+                "s3_key": key,
+                "ticker": meta.get("ticker", ""),
+                "cik": str(meta.get("cik", "")),
+                "company": meta.get("company", ""),
+                "filing_type": meta.get("filing_type", category_dir),
+                "filing_date": meta.get("filing_date", ""),
+                "accession": meta.get("accession", ""),
+                "category": category_dir,
+            })
+        logger.info("S3 %s: %d objects under s3://%s/%s", category_dir, len(keys), bucket, cat_prefix)
+
+    if PROCESS_FACTSHEETS:
+        fs_prefix = _s3_join(prefix, "factsheets") + "/"
+        keys = _list_s3_keys(client, bucket, fs_prefix, (".md",))
+        for key in keys:
+            fname = key.rsplit("/", 1)[-1]
+            stem = fname[:-3] if fname.endswith(".md") else fname
+            parts = stem.split("_")
+            ticker = parts[0] if len(parts) >= 2 else ""
+            cik = parts[1] if len(parts) >= 2 else ""
+            records.append({
+                "source": "s3",
+                "path": "",
+                "s3_key": key,
+                "ticker": ticker,
+                "cik": cik,
+                "company": "",
+                "filing_type": "factsheet",
+                "filing_date": "",
+                "accession": "",
+                "category": "factsheet",
+            })
+        logger.info("S3 factsheets: %d objects under s3://%s/%s", len(keys), bucket, fs_prefix)
+
+    logger.info("Collected %d S3 inputs from s3://%s/%s", len(records), bucket, prefix)
+    return records
+
+
+def collect_inputs() -> List[Dict[str, str]]:
+    """Collect inputs from S3 or the local filesystem based on INPUT_SOURCE."""
+    if INPUT_SOURCE == "local":
+        return collect_local_inputs(INPUT_PATH, MANIFEST_PATH, FACTSHEET_DIR)
+    if INPUT_SOURCE == "s3":
+        return collect_s3_inputs(S3_BUCKET, S3_PREFIX)
+    raise ValueError(f"Unsupported INPUT_SOURCE={INPUT_SOURCE!r}; use 's3' or 'local'")
+
+
+def collect_filing_inputs(input_path: str, manifest_path: str) -> List[Dict[str, str]]:
+    """Backward-compatible local collector for callers of the original API."""
+    return collect_local_inputs(input_path, manifest_path, FACTSHEET_DIR)
+
+
 # ---------------------------------------------------------------------------
-# Stage 1: Parse HTML with Docling + chunk
+# Stage 1: Parse with Docling + chunk
 # ---------------------------------------------------------------------------
 
 class DoclingChunkActor:
-    """Parse HTML filings with Docling and chunk with HybridChunker."""
+    """Parse HTML/MD with Docling and chunk with HybridChunker.
+
+    For S3 records, downloads each object to actor-local /tmp, parses it,
+    then deletes the temp file.
+    """
 
     def __init__(self):
         from docling.chunking import HybridChunker
@@ -149,7 +306,6 @@ class DoclingChunkActor:
 
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-        # HTML for EDGAR filings, MD for the rendered fact sheets
         self.converter = DocumentConverter(
             allowed_formats=[InputFormat.HTML, InputFormat.MD]
         )
@@ -158,7 +314,23 @@ class DoclingChunkActor:
         )
         self.docs_processed = 0
         self.docs_failed = 0
+        self._s3 = None
         logger.info("DoclingChunkActor ready")
+
+    def _client(self):
+        if self._s3 is None:
+            self._s3 = _s3_client()
+        return self._s3
+
+    def _resolve_local_path(self, source: str, path: str, s3_key: str) -> tuple[str, Optional[str]]:
+        """Return (local_path, temp_path_to_delete_or_None)."""
+        if source == "s3" or s3_key:
+            suffix = Path(s3_key).suffix or ".bin"
+            fd, tmp_path = tempfile.mkstemp(prefix="edgar-", suffix=suffix, dir="/tmp")
+            os.close(fd)
+            download_s3_object(self._client(), S3_BUCKET, s3_key, tmp_path)
+            return tmp_path, tmp_path
+        return path, None
 
     def __call__(self, batch: Dict[str, List]) -> Dict[str, List]:
         out: Dict[str, List[Any]] = {
@@ -168,18 +340,23 @@ class DoclingChunkActor:
             "category": [], "parse_time_s": [],
         }
 
-        for i in range(len(batch["path"])):
-            file_path = batch["path"][i]
-            fname = os.path.basename(file_path)
+        n = len(batch["s3_key"]) if "s3_key" in batch else len(batch["path"])
+        for i in range(n):
+            source = batch.get("source", ["local"] * n)[i]
+            path = batch.get("path", [""] * n)[i]
+            s3_key = batch.get("s3_key", [""] * n)[i]
+            fname = os.path.basename(s3_key or path)
+            tmp_to_delete: Optional[str] = None
 
             try:
-                if not os.path.isfile(file_path):
+                local_path, tmp_to_delete = self._resolve_local_path(source, path, s3_key)
+                if not os.path.isfile(local_path):
                     logger.warning("File not found: %s", fname)
                     self.docs_failed += 1
                     continue
 
                 t0 = time.time()
-                result = self.converter.convert(file_path)
+                result = self.converter.convert(local_path)
                 doc = result.document
                 parse_time = time.time() - t0
 
@@ -204,6 +381,12 @@ class DoclingChunkActor:
             except Exception as e:
                 self.docs_failed += 1
                 logger.error("Failed to parse %s: %s", fname, str(e)[:200])
+            finally:
+                if tmp_to_delete and os.path.isfile(tmp_to_delete):
+                    try:
+                        os.unlink(tmp_to_delete)
+                    except OSError:
+                        pass
 
         return out
 
@@ -366,7 +549,6 @@ def run_pipeline(records: List[Dict[str, str]]) -> Dict[str, Any]:
         NUM_EMBED_ACTORS, NUM_MILVUS_ACTORS,
     )
 
-    # Stage 1: Parse HTML + chunk
     ds = ds.map_batches(
         DoclingChunkActor,
         concurrency=NUM_DOCLING_ACTORS,
@@ -374,7 +556,6 @@ def run_pipeline(records: List[Dict[str, str]]) -> Dict[str, Any]:
         num_cpus=CPUS_PER_DOCLING_ACTOR,
     )
 
-    # Stage 2: Embed (CPU)
     ds = ds.map_batches(
         EmbedActor,
         concurrency=NUM_EMBED_ACTORS,
@@ -382,7 +563,6 @@ def run_pipeline(records: List[Dict[str, str]]) -> Dict[str, Any]:
         num_cpus=2,
     )
 
-    # Stage 3: Write to Milvus
     results = ds.map_batches(
         MilvusWriteActor,
         concurrency=NUM_MILVUS_ACTORS,
@@ -390,7 +570,6 @@ def run_pipeline(records: List[Dict[str, str]]) -> Dict[str, Any]:
         num_cpus=1,
     )
 
-    # Consume and collect metrics
     start = time.time()
     total_chunks = 0
     source_files = set()
@@ -411,6 +590,7 @@ def run_pipeline(records: List[Dict[str, str]]) -> Dict[str, Any]:
         "embedding_model": EMBEDDING_MODEL,
         "embedding_dim": EMBEDDING_DIM,
         "collection": COLLECTION_NAME,
+        "input_source": INPUT_SOURCE,
     }
 
 
@@ -419,6 +599,7 @@ def print_report(metrics: Dict[str, Any]):
     print("\n" + "=" * 60)
     print("EDGAR RAG INGESTION REPORT")
     print("=" * 60)
+    print(f"Input source:    {metrics.get('input_source', INPUT_SOURCE)}")
     print(f"Documents:       {metrics['total_documents']}")
     print(f"Chunks:          {metrics['total_chunks']}")
     print(f"Wall clock:      {metrics['wall_clock_s']:.1f}s")
@@ -429,20 +610,22 @@ def print_report(metrics: Dict[str, Any]):
     print(f"\nMETRICS_JSON={json.dumps(metrics)}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def run():
-    records = collect_filing_inputs(INPUT_PATH, MANIFEST_PATH)
+    records = collect_inputs()
     if not records:
-        print(f"No filings found under {INPUT_PATH}")
+        where = f"s3://{S3_BUCKET}/{S3_PREFIX}" if INPUT_SOURCE == "s3" else INPUT_PATH
+        print(f"No filings found under {where}")
         return
 
     legal_count = sum(1 for r in records if r["category"] == "legal")
     compliance_count = sum(1 for r in records if r["category"] == "compliance")
+    factsheet_count = sum(1 for r in records if r["category"] == "factsheet")
     tickers = set(r["ticker"] for r in records if r["ticker"])
-    print(f"Processing {len(records)} filings ({legal_count} legal, {compliance_count} compliance)")
+    print(
+        f"Processing {len(records)} inputs "
+        f"({legal_count} legal, {compliance_count} compliance, {factsheet_count} factsheets) "
+        f"via INPUT_SOURCE={INPUT_SOURCE}"
+    )
     print(f"Companies: {len(tickers)} ({', '.join(sorted(tickers)[:10])}{'...' if len(tickers) > 10 else ''})")
 
     setup_milvus_collection()

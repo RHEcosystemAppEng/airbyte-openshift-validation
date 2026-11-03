@@ -1,15 +1,17 @@
 # RayCluster for the EDGAR RAG ingestion pipeline
 #
 # Requires: KubeRay operator installed via RHOAI or standalone
-#   oc apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/default/kustomization.yaml
+#
+# Seed corpus is read from S3 (see edgar-seed-s3 Secret). Pipeline code and
+# dependencies ship in the custom Ray image — replace IMAGE below with an
+# immutable tag or digest before applying.
 #
 # Validation sizing (2 workers × 2 CPU = 4 worker CPUs):
 #   Docling: 2 actors × 1 CPU = 2 CPUs
 #   Embed:   1 actor  × 2 CPU = 2 CPUs
-#   Milvus:  1 actor  × 1 CPU = 1 CPU  (oversubscribed, acceptable for validation)
-#   Total:   ~5 CPUs requested — Ray will queue actors as slots free up
+#   Milvus:  1 actor  × 1 CPU = 1 CPU
 #
-# For larger runs, scale maxReplicas and bump actor counts in the RayJob env vars.
+# IMAGE: quay.io/<org>/edgar-rag-ray:<immutable-tag-or-digest>
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
@@ -33,7 +35,8 @@ spec:
           runAsNonRoot: true
         containers:
           - name: ray-head
-            image: rayproject/ray:2.54.0-py311
+            # Replace with your immutable image tag or digest before apply.
+            image: quay.io/EXAMPLE/edgar-rag-ray:0.1.0
             ports:
               - containerPort: 6379
                 name: gcs
@@ -51,26 +54,19 @@ spec:
             env:
               - name: RAY_GRAFANA_IFRAME_HOST
                 value: ""
-            volumeMounts:
-              - name: seed-data
-                mountPath: /data/seed
-                readOnly: true
-              - name: pipeline-code
-                mountPath: /data/pipeline
-                readOnly: true
+              - name: INPUT_SOURCE
+                value: s3
+              - name: PYTHONPATH
+                value: /opt/edgar-rag
+            envFrom:
+              - secretRef:
+                  name: edgar-seed-s3
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop: ["ALL"]
               seccompProfile:
                 type: RuntimeDefault
-        volumes:
-          - name: seed-data
-            persistentVolumeClaim:
-              claimName: seed-data
-          - name: pipeline-code
-            persistentVolumeClaim:
-              claimName: seed-data
   workerGroupSpecs:
     - groupName: workers
       replicas: 2
@@ -87,7 +83,8 @@ spec:
             runAsNonRoot: true
           containers:
             - name: ray-worker
-              image: rayproject/ray:2.54.0-py311
+              # Replace with your immutable image tag or digest before apply.
+              image: quay.io/EXAMPLE/edgar-rag-ray:0.1.0
               resources:
                 requests:
                   cpu: "2"
@@ -95,23 +92,17 @@ spec:
                 limits:
                   cpu: "2"
                   memory: 4Gi
-              volumeMounts:
-                - name: seed-data
-                  mountPath: /data/seed
-                  readOnly: true
-                - name: pipeline-code
-                  mountPath: /data/pipeline
-                  readOnly: true
+              env:
+                - name: INPUT_SOURCE
+                  value: s3
+                - name: PYTHONPATH
+                  value: /opt/edgar-rag
+              envFrom:
+                - secretRef:
+                    name: edgar-seed-s3
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
                   drop: ["ALL"]
                 seccompProfile:
                   type: RuntimeDefault
-          volumes:
-            - name: seed-data
-              persistentVolumeClaim:
-                claimName: seed-data
-            - name: pipeline-code
-              persistentVolumeClaim:
-                claimName: seed-data
